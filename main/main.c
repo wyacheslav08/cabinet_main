@@ -60,8 +60,11 @@ void app_main(void) {
             if (fake_hum > 60.0f) fake_hum = 45.0f;
         }
 
-        // 2. Отправляем ТЕКУЩИЙ СТАТУС (Температура и Влажность)
-        snprintf(uart_buf, sizeof(uart_buf), "STATUS:T:%.1f,H:%.1f\n", current_temp, current_hum);
+        // 2. Отправляем ТЕКУЩИЙ СТАТУС (Температура и Влажность) (используем жестко точку для дробных чисел)
+        snprintf(uart_buf, sizeof(uart_buf), "STATUS:T:%d.%d,H:%d.%d\n", 
+                 (int)current_temp, (int)(current_temp * 10) % 10,
+                 (int)current_hum, (int)(current_hum * 10) % 10);
+                 
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
         vTaskDelay(pdMS_TO_TICKS(50)); 
 
