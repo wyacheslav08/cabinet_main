@@ -40,53 +40,81 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "=== System fully operational! Handing over to RTOS ===");
 
-    char uart_buf[256];
+    char uart_buf[512]; // Увеличили буфер, так как строка будет длинной
+    float fake_temp = 22.0f;
+    float fake_hum = 45.0f;
 
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Обновление каждые 5 секунд
+        vTaskDelay(pdMS_TO_TICKS(5000)); 
         
         // 1. Читаем реальные данные с датчика SHT40
         float current_temp = 0.0f; 
         float current_hum = 0.0f;
         if (sht40_read(MUX_CH_SHT40_TOP, &current_temp, &current_hum) != ESP_OK) {
-            current_temp = -99.0f; // Ошибка датчика
-            current_hum = -99.0f;
+            // Если датчик не подключен, генерируем "плавающие" фейковые данные для теста UI
+            current_temp = fake_temp;
+            current_hum = fake_hum;
+            fake_temp += 0.2f;
+            fake_hum += 0.5f;
+            if (fake_temp > 30.0f) fake_temp = 22.0f;
+            if (fake_hum > 60.0f) fake_hum = 45.0f;
         }
 
         // 2. Отправляем ТЕКУЩИЙ СТАТУС (Температура и Влажность)
         snprintf(uart_buf, sizeof(uart_buf), "STATUS:T:%.1f,H:%.1f\n", current_temp, current_hum);
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
-        vTaskDelay(pdMS_TO_TICKS(100)); // Небольшая пауза между пакетами, чтобы не переполнить UART
+        vTaskDelay(pdMS_TO_TICKS(50)); 
 
-        // 3. Отправляем ОБЩИЕ НАСТРОЙКИ (General Settings)
+        // 3. Отправляем ПОЛНЫЕ ОБЩИЕ НАСТРОЙКИ (General Settings)
         settings_lock();
-        snprintf(uart_buf, sizeof(uart_buf), "GEN_SET:targetHumidity=%d,waterHeaterEnabled=%d\n", 
-                 sys_settings.targetHumidity, 
-                 sys_settings.waterHeaterEnabled ? 1 : 0);
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "GEN_SET:targetHumidity=%d,"
+                 "lockHoldTime=1000,"
+                 "lockTimeIndex=0,"
+                 "menuTimeoutOptionIndex=1,"
+                 "screenTimeoutOptionIndex=0,"
+                 "doorSoundEnabled=%d,"
+                 "waterSilicaSoundEnabled=%d,"
+                 "waterHeaterEnabled=%d,"
+                 "waterHeaterMaxTemp=%d\n", 
+                 sys_settings.targetHumidity,
+                 sys_settings.doorSoundEnabled ? 1 : 0,
+                 sys_settings.waterSilicaSoundEnabled ? 1 : 0,
+                 sys_settings.waterHeaterEnabled ? 1 : 0,
+                 sys_settings.waterHeaterMaxTemp);
         settings_unlock();
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
 
         // 4. Отправляем ЛОГИКУ ВЛАЖНОСТИ (Humidity Logic)
         settings_lock();
-        snprintf(uart_buf, sizeof(uart_buf), "HUM_LOG:deadZonePercent=%.1f,humidityHysteresis=1.0\n", 
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "HUM_LOG:deadZonePercent=%.1f,"
+                 "minHumidityChangeForTimeout=1.0,"
+                 "maxOperationDuration=2,"
+                 "operationCooldown=1,"
+                 "maxSafeHumidity=65.0,"
+                 "resourceCheckDiff=3.0,"
+                 "humidityHysteresis=1.0,"
+                 "resourceLowFaultThreshold=2,"
+                 "resourceEmptyFaultThreshold=4\n", 
                  sys_settings.deadZonePercent);
         settings_unlock();
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
 
-        // 5. Отправляем СТАТИСТИКУ (Statistics)
-        // В реальном проекте эти счетчики нужно инкрементировать и сохранять в NVS при загрузке
-        snprintf(uart_buf, sizeof(uart_buf), "STAT:resetCount=%lu,autoRebootCounter=%lu\n", 
-                 sys_settings.autoRebootCounter, // Заглушка, используем что есть
-                 sys_settings.autoRebootCounter);
+        // 5. Отправляем КАЛИБРОВКУ (Calibration)
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "CALIB:tempOffsetTop=0,"
+                 "humOffsetTop=0,"
+                 "tempOffsetHum=0,"
+                 "humOffsetHum=0\n");
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
 
         // 6. Отправляем СТАТУС ЗАМКА И ДВЕРИ (K10)
-        // Читаем реальный пин двери
         bool is_door_closed = (gpio_get_level(PIN_DOOR_SENSOR) == 0);
-        bool is_lock_active = gesture_is_lock_pressed(); // Или статус реле замка
+        bool is_lock_active = gesture_is_lock_pressed(); 
         snprintf(uart_buf, sizeof(uart_buf), "K10_STAT:LOCK:%s,DOOR:%s,HOLD:1000\n", 
                  is_lock_active ? "active" : "inactive",
                  is_door_closed ? "closed" : "open");

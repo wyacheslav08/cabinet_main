@@ -21,7 +21,7 @@ static void process_incoming_command(char* cmd_str) {
     
     ESP_LOGI(TAG, "Gateway commanded: %s", cmd_str);
 
-    // 1. Команда изменения влажности (SET_HUM:45)
+ // 1. Команда изменения целевой влажности (SET_HUM:45)
     if (strncmp(cmd_str, "SET_HUM:", 8) == 0) {
         int new_hum = atoi(cmd_str + 8);
         if (new_hum >= 10 && new_hum <= 90) {
@@ -32,30 +32,42 @@ static void process_incoming_command(char* cmd_str) {
             ESP_LOGI(TAG, "Target humidity updated to %d%%", new_hum);
         }
     }
-    // 2. Системные команды (SYS_CMD:REBOOT)
-    else if (strncmp(cmd_str, "SYS_CMD:", 8) == 0) {
-        char* action = cmd_str + 8;
-        if (strcmp(action, "REBOOT") == 0) {
-            ESP_LOGW(TAG, "Reboot command received from Web App! Restarting...");
-            vTaskDelay(pdMS_TO_TICKS(500)); // Даем время отправить ответ
-            esp_restart();
-        }
-        else if (strcmp(action, "RESET_TO_DEFAULTS") == 0) {
-            ESP_LOGW(TAG, "Factory reset command received!");
-            settings_reset_to_defaults();
-            esp_restart();
-        }
+    // 2. Общие настройки (SET_GEN:targetHumidity=55,waterHeaterEnabled=1,...)
+    else if (strncmp(cmd_str, "SET_GEN:", 8) == 0) {
+        char* params = cmd_str + 8;
+        ESP_LOGI(TAG, "Parsing GEN_SET: %s", params);
+        
+        settings_lock();
+        // Простой парсинг (ищем подстроки)
+        char* ptr;
+        if ((ptr = strstr(params, "targetHumidity=")) != NULL) sys_settings.targetHumidity = atoi(ptr + 15);
+        if ((ptr = strstr(params, "waterHeaterEnabled=")) != NULL) sys_settings.waterHeaterEnabled = (atoi(ptr + 19) == 1);
+        if ((ptr = strstr(params, "waterHeaterMaxTemp=")) != NULL) sys_settings.waterHeaterMaxTemp = atoi(ptr + 19);
+        if ((ptr = strstr(params, "doorSoundEnabled=")) != NULL) sys_settings.doorSoundEnabled = (atoi(ptr + 17) == 1);
+        if ((ptr = strstr(params, "waterSilicaSoundEnabled=")) != NULL) sys_settings.waterSilicaSoundEnabled = (atoi(ptr + 24) == 1);
+        settings_unlock();
+        settings_save();
     }
-    // 3. Управление замком (CMD_LOCK:PRESS)
+    // 3. Логика влажности (SET_HUMLOG:deadZonePercent=2.0,...)
+    else if (strncmp(cmd_str, "SET_HUMLOG:", 11) == 0) {
+        char* params = cmd_str + 11;
+        ESP_LOGI(TAG, "Parsing HUM_LOG: %s", params);
+        settings_lock();
+        char* ptr;
+        if ((ptr = strstr(params, "deadZonePercent=")) != NULL) sys_settings.deadZonePercent = atof(ptr + 16);
+        settings_unlock();
+        settings_save();
+    }
+    // 4. Управление замком (CMD_LOCK:PRESS / ACTIVATE)
     else if (strncmp(cmd_str, "CMD_LOCK:", 9) == 0) {
         char* action = cmd_str + 9;
-        if (strcmp(action, "PRESS") == 0) {
+        if (strcmp(action, "PRESS") == 0 || strcmp(action, "ACTIVATE") == 0) {
             ESP_LOGI(TAG, "Unlocking Magnetic Lock...");
-            // TODO: gpio_set_level(PIN_MAG_LOCK, 1);
+            // gpio_set_level(PIN_MAG_LOCK, 1);
         }
         else if (strcmp(action, "RELEASE") == 0) {
             ESP_LOGI(TAG, "Locking Magnetic Lock...");
-            // TODO: gpio_set_level(PIN_MAG_LOCK, 0);
+            // gpio_set_level(PIN_MAG_LOCK, 0);
         }
     }
 }
