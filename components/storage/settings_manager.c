@@ -9,7 +9,7 @@
 static const char *TAG = "STORAGE";
 #define NVS_NAMESPACE "cabinet"
 #define NVS_KEY_CONFIG "sys_cfg"
-#define CURRENT_SETTINGS_VERSION 1
+#define CURRENT_SETTINGS_VERSION 2
 
 cabinet_settings_t sys_settings;
 static SemaphoreHandle_t settings_mutex = NULL;
@@ -27,17 +27,39 @@ esp_err_t settings_reset_to_defaults(void) {
     memset(&sys_settings, 0, sizeof(cabinet_settings_t));
     
     sys_settings.version = CURRENT_SETTINGS_VERSION;
+    
+    // Общие
     sys_settings.targetHumidity = 50;
-    sys_settings.ventTempThreshold = 35;
+    sys_settings.lockHoldTime = 1000;
+    sys_settings.lockTimeIndex = 0;
+    sys_settings.menuTimeoutOptionIndex = 1;
+    sys_settings.screenTimeoutOptionIndex = 0;
     sys_settings.doorSoundEnabled = true;
     sys_settings.waterSilicaSoundEnabled = true;
     sys_settings.waterHeaterEnabled = true;
     sys_settings.waterHeaterMaxTemp = 40;
-    sys_settings.deadZonePercent = 1.0f;
-    sys_settings.password[0] = 1;
-    sys_settings.password[1] = 2;
-    sys_settings.password[2] = 3;
     
+    // Логика
+    sys_settings.deadZonePercent = 1.0f;
+    sys_settings.minHumidityChangeForTimeout = 1.0f;
+    sys_settings.maxOperationDuration = 2 * 60 * 1000; // 2 минуты
+    sys_settings.operationCooldown = 1 * 60 * 1000;    // 1 минута
+    sys_settings.maxSafeHumidity = 65.0f;
+    sys_settings.resourceCheckDiff = 3.0f;
+    sys_settings.humidityHysteresis = 1.0f;
+    sys_settings.resourceLowFaultThreshold = 2;
+    sys_settings.resourceEmptyFaultThreshold = 4;
+
+    // Калибровка и Статистика (нули)
+    // ... memset уже занулил их ...
+
+    // Железо (HW_TUNE)
+    sys_settings.hx711ScaleFactor = 420.0f;
+    sys_settings.hx711TareOffset = 8400000;
+    sys_settings.dspPingDurationMs = 50;
+    sys_settings.dspDryResonanceHz = 850.0f;
+    sys_settings.dspWetResonanceHz = 750.0f;
+
     settings_unlock();
     
     ESP_LOGW(TAG, "Settings reset to factory defaults");

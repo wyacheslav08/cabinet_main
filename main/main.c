@@ -115,12 +115,63 @@ void app_main(void) {
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
         vTaskDelay(pdMS_TO_TICKS(50));
 
-        // 6. Отправляем СТАТУС ЗАМКА И ДВЕРИ (K10)
+
+        // Делаем снимок настроек
+        settings_lock();
+        cabinet_settings_t s = sys_settings;
+        settings_unlock();
+
+        // 3. Отправляем ПОЛНЫЕ ОБЩИЕ НАСТРОЙКИ (GEN_SET)
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "GEN_SET:targetHumidity=%d,lockHoldTime=%u,lockTimeIndex=%d,menuTimeoutOptionIndex=%d,"
+                 "screenTimeoutOptionIndex=%d,doorSoundEnabled=%d,waterSilicaSoundEnabled=%d,"
+                 "waterHeaterEnabled=%d,waterHeaterMaxTemp=%d\n", 
+                 s.targetHumidity, s.lockHoldTime, s.lockTimeIndex, s.menuTimeoutOptionIndex,
+                 s.screenTimeoutOptionIndex, s.doorSoundEnabled?1:0, s.waterSilicaSoundEnabled?1:0,
+                 s.waterHeaterEnabled?1:0, s.waterHeaterMaxTemp);
+        uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // 4. Отправляем ЛОГИКУ ВЛАЖНОСТИ (HUM_LOG)
+        // Внимание: мы переводим миллисекунды обратно в минуты для Web App (/ 60000)
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "HUM_LOG:deadZonePercent=%.1f,minHumidityChangeForTimeout=%.1f,maxOperationDuration=%lu,"
+                 "operationCooldown=%lu,maxSafeHumidity=%.1f,resourceCheckDiff=%.1f,humidityHysteresis=%.1f,"
+                 "resourceLowFaultThreshold=%d,resourceEmptyFaultThreshold=%d\n", 
+                 s.deadZonePercent, s.minHumidityChangeForTimeout, s.maxOperationDuration / 60000,
+                 s.operationCooldown / 60000, s.maxSafeHumidity, s.resourceCheckDiff, s.humidityHysteresis,
+                 s.resourceLowFaultThreshold, s.resourceEmptyFaultThreshold);
+        uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // 5. Отправляем КАЛИБРОВКУ (CALIB)
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "CALIB:tempOffsetTop=%d,humOffsetTop=%d,tempOffsetHum=%d,humOffsetHum=%d\n",
+                 s.tempOffsetTop, s.humOffsetTop, s.tempOffsetHum, s.humOffsetHum);
+        uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // 6. Отправляем СТАТИСТИКУ (STAT)
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "STAT:resetCount=%lu,wdtResetCount=%lu,autoRebootCounter=%lu,totalRebootCounter=%lu,lastRebootTimestamp=%lu\n",
+                 s.resetCount, s.wdtResetCount, s.autoRebootCounter, s.totalRebootCounter, s.lastRebootTimestamp);
+        uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // 7. Отправляем НАСТРОЙКИ ЖЕЛЕЗА (HW_TUNE) - Новый пакет!
+        snprintf(uart_buf, sizeof(uart_buf), 
+                 "HW_TUNE:hxScale=%.1f,hxTare=%ld,dspPing=%lu,dspDry=%.1f,dspWet=%.1f\n",
+                 s.hx711ScaleFactor, s.hx711TareOffset, s.dspPingDurationMs, s.dspDryResonanceHz, s.dspWetResonanceHz);
+        uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
+        vTaskDelay(pdMS_TO_TICKS(50));
+        
+        // 8. Отправляем СТАТУС ЗАМКА И ДВЕРИ (K10)
         bool is_door_closed = (gpio_get_level(PIN_DOOR_SENSOR) == 0);
         bool is_lock_active = gesture_is_lock_pressed(); 
-        snprintf(uart_buf, sizeof(uart_buf), "K10_STAT:LOCK:%s,DOOR:%s,HOLD:1000\n", 
+        snprintf(uart_buf, sizeof(uart_buf), "K10_STAT:LOCK:%s,DOOR:%s,HOLD:%u\n", 
                  is_lock_active ? "active" : "inactive",
-                 is_door_closed ? "closed" : "open");
+                 is_door_closed ? "closed" : "open",
+                 s.lockHoldTime);
         uart_link_send((const uint8_t*)uart_buf, strlen(uart_buf));
     }
 }

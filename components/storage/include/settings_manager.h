@@ -9,34 +9,59 @@ extern "C" {
 
 #define MAX_PASSWORD_LENGTH 9
 
-// Структура всех настроек системы
 typedef struct {
     uint16_t version;
+    
+    // --- Общие настройки (GEN_SET) ---
     int targetHumidity;
-    int ventTempThreshold;
-    int password[MAX_PASSWORD_LENGTH];
+    uint16_t lockHoldTime;
+    int lockTimeIndex;
+    int menuTimeoutOptionIndex;
+    int screenTimeoutOptionIndex;
     bool doorSoundEnabled;
     bool waterSilicaSoundEnabled;
     bool waterHeaterEnabled;
     uint8_t waterHeaterMaxTemp;
+    int password[MAX_PASSWORD_LENGTH];
+
+    // --- Логика влажности (HUM_LOG) ---
     float deadZonePercent;
+    float minHumidityChangeForTimeout;
+    uint32_t maxOperationDuration; // В миллисекундах
+    uint32_t operationCooldown;    // В миллисекундах
+    float maxSafeHumidity;
+    float resourceCheckDiff;
+    float humidityHysteresis;
+    uint8_t resourceLowFaultThreshold;
+    uint8_t resourceEmptyFaultThreshold;
+
+    // --- Калибровка датчиков (CALIB) ---
+    int8_t tempOffsetTop;
+    int8_t humOffsetTop;
+    int8_t tempOffsetHum;
+    int8_t humOffsetHum;
+
+    // --- Статистика (STAT) ---
+    uint32_t resetCount;
+    uint32_t wdtResetCount;
     uint32_t autoRebootCounter;
-    // ... сюда в будущем добавим настройки для микрофона и гитар ...
+    uint32_t totalRebootCounter;
+    uint32_t lastRebootTimestamp;
+
+    // --- НОВОЕ: Настройки Железа (HW_TUNE) ---
+    float hx711ScaleFactor;        // Коэффициент весов
+    int32_t hx711TareOffset;       // Тара весов
+    uint32_t dspPingDurationMs;    // Длительность удара по деке
+    float dspDryResonanceHz;       // Эталонная частота сухой гитары
+    float dspWetResonanceHz;       // Эталонная частота влажной гитары
+
 } cabinet_settings_t;
 
-// Глобальный экземпляр настроек в RAM
 extern cabinet_settings_t sys_settings;
 
-// Инициализация NVS и загрузка настроек
 esp_err_t settings_init(void);
-
-// Сохранение текущих настроек из RAM во Flash
 esp_err_t settings_save(void);
-
-// Сброс до заводских настроек
 esp_err_t settings_reset_to_defaults(void);
-
-// Потокобезопасный доступ (Мьютексы)
 void settings_lock(void);
 void settings_unlock(void);
 
