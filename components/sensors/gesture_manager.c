@@ -38,6 +38,7 @@ static int map_to_matrix(int phys_pin) {
 static void analyze_sequence(void) {
     if (seq_idx < 2) {
         last_gesture = GESTURE_CLICK;
+        ESP_LOGI(TAG, "=> Detected: CLICK at [Col: %d, Row: %d]", col_sequence[0], row_sequence[0]);
         return;
     }
 
@@ -55,6 +56,33 @@ static void analyze_sequence(void) {
     } else {
         if (row_diff > 1) last_gesture = GESTURE_SWIPE_DOWN;
         else if (row_diff < -1) last_gesture = GESTURE_SWIPE_UP;
+    }
+
+    // --- ОТЛАДОЧНЫЙ ВЫВОД (ТРАЕКТОРИЯ И ЖЕСТ) ---
+    if (last_gesture != GESTURE_NONE) {
+        const char* gesture_name = "UNKNOWN";
+        switch (last_gesture) {
+            case GESTURE_SWIPE_RIGHT: gesture_name = "SWIPE RIGHT"; break;
+            case GESTURE_SWIPE_LEFT:  gesture_name = "SWIPE LEFT"; break;
+            case GESTURE_SWIPE_UP:    gesture_name = "SWIPE UP"; break;
+            case GESTURE_SWIPE_DOWN:  gesture_name = "SWIPE DOWN"; break;
+            default: break;
+        }
+
+        // Собираем траекторию в одну строку для красивого вывода
+        char path_buf[128] = {0};
+        int offset = 0;
+        for (int i = 0; i < seq_idx; i++) {
+            offset += snprintf(path_buf + offset, sizeof(path_buf) - offset, 
+                               "[%d,%d] ", col_sequence[i], row_sequence[i]);
+            if (offset >= sizeof(path_buf) - 5) break; // Защита от переполнения буфера
+        }
+
+        ESP_LOGW(TAG, "========================================");
+        ESP_LOGW(TAG, "=> Detected: %s", gesture_name);
+        ESP_LOGW(TAG, "=> Path: %s", path_buf);
+        ESP_LOGW(TAG, "=> Total points: %d (Delta Col: %d, Delta Row: %d)", seq_idx, col_diff, row_diff);
+        ESP_LOGW(TAG, "========================================");
     }
 
     if (last_gesture != GESTURE_NONE) {
