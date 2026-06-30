@@ -15,10 +15,10 @@
 #define MUX_ADDR_SENSORS            0x70    // Mux 2: Климат и Дисплеи
 
 // Каналы Mux 1 (0x70) - 4 контроллера MPR121
-#define MUX_CH_MPR_1                0
-#define MUX_CH_MPR_2                1
-#define MUX_CH_MPR_3                2
-#define MUX_CH_MPR_4                3
+#define MUX_CH_MPR_1                4
+#define MUX_CH_MPR_2                5
+#define MUX_CH_MPR_3                6
+#define MUX_CH_MPR_4                7
 
 // Каналы Mux 2 (0x71) - Климат и Экран
 #define MUX_CH_SHT40_TOP            4

@@ -3,37 +3,43 @@
 #include "i2c_manager.h"
 #include "hw_config.h"
 #include "climate_control.h"
+#include "gesture_manager.h"
+#include "settings_manager.h"
 #include "driver/i2c.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "rom/ets_sys.h"
-#include <string.h>
 
 static const char *TAG = "UI_MGR";
-
-// Глобальный объект дисплея
 static u8g2_t u8g2_main;
 
-// 1. Функция задержек для U8g2 (интеграция с FreeRTOS)
+// --- Состояния меню ---
+typedef enum {
+    SCREEN_MAIN,
+    SCREEN_MENU_HUMIDITY,
+    SCREEN_MENU_HEATER,
+    SCREEN_MENU_SOUND,
+    SCREEN_MENU_CALIB,
+    SCREEN_MENU_REBOOT
+} screen_state_t;
+
+static screen_state_t current_screen = SCREEN_MAIN;
+static bool is_editing = false; // Находимся ли мы в режиме изменения значения
+static int edit_value = 0;      // Временное значение при редактировании
+
+// --- Системные функции U8g2 ---
 static uint8_t u8g2_gpio_and_delay_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr) {
     switch(msg) {
-        case U8X8_MSG_DELAY_MILLI:
-            vTaskDelay(pdMS_TO_TICKS(arg_int));
-            break;
-        case U8X8_MSG_DELAY_10MICRO:
-            ets_delay_us(arg_int * 10);
-            break;
-        case U8X8_MSG_DELAY_100NANO:
-            ets_delay_us(1);
-            break;
+        case U8X8_MSG_DELAY_MILLI: vTaskDelay(pdMS_TO_TICKS(arg_int)); break;
+        case U8X8_MSG_DELAY_10MICRO: ets_delay_us(arg_int * 10); break;
+        case U8X8_MSG_DELAY_100NANO: ets_delay_us(1); break;
     }
     return 1;
 }
 
-// 2. Функция передачи данных по I2C (Интеграция с нашим Менеджером и Мультиплексором)
 static uint8_t u8g2_byte_hw_i2c_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr) {
-    static uint8_t buffer[128]; // Буфер для пакета I2C
+    static uint8_t buffer[128]; 
     static uint8_t buf_idx = 0;
 
     switch(msg) {
@@ -41,16 +47,12 @@ static uint8_t u8g2_byte_hw_i2c_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, v
             memcpy(&buffer[buf_idx], arg_ptr, arg_int);
             buf_idx += arg_int;
             break;
-            
         case U8X8_MSG_BYTE_START_TRANSFER:
             buf_idx = 0;
             break;
-            
         case U8X8_MSG_BYTE_END_TRANSFER:
             i2c_manager_lock();
-            // Переключаем мультиплексор на канал Главного OLED
             if (i2c_manager_set_mux(MUX_ADDR_SENSORS, MUX_CH_OLED_MAIN) == ESP_OK) {
-                // Отправляем буфер на адрес дисплея
                 uint8_t i2c_addr = u8x8_GetI2CAddress(u8x8) >> 1; 
                 i2c_master_write_to_device(I2C_MASTER_NUM, i2c_addr, buffer, buf_idx, pdMS_TO_TICKS(100));
             }
@@ -60,60 +62,146 @@ static uint8_t u8g2_byte_hw_i2c_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, v
     return 1;
 }
 
-// 3. Главная задача отрисовки интерфейса (UI Task)
-static void ui_task(void *pvParameters) {
-    ESP_LOGI(TAG, "UI Task Started");
+// --- Логика обработки жестов ---
+static void process_ui_gestures(void) {
+    gesture_t gesture = gesture_get_last();
+    if (gesture == GESTURE_NONE) return;
 
-    // Инициализация структуры дисплея SSD1306 (128x64)
-    u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2_main, U8G2_R0, u8g2_byte_hw_i2c_cb, u8g2_gpio_and_delay_cb);
-    u8g2_main.u8x8.i2c_address = 0x3C << 1; // U8g2 ожидает сдвинутый адрес
+    ESP_LOGI(TAG, "UI processing gesture: %d", gesture);
+
+    if (current_screen == SCREEN_MAIN) {
+        if (gesture == GESTURE_SWIPE_RIGHT) {
+            current_screen = SCREEN_MENU_HUMIDITY; // Вход в меню
+        }
+    } 
+    else if (!is_editing) {
+        // Навигация по меню
+        if (gesture == GESTURE_SWIPE_LEFT) {
+            current_screen = SCREEN_MAIN; // Выход
+        } else if (gesture == GESTURE_SWIPE_DOWN) {
+            if (current_screen < SCREEN_MENU_REBOOT) current_screen++;
+            else current_screen = SCREEN_MENU_HUMIDITY;
+        } else if (gesture == GESTURE_SWIPE_UP) {
+            if (current_screen > SCREEN_MENU_HUMIDITY) current_screen--;
+            else current_screen = SCREEN_MENU_REBOOT;
+        } else if (gesture == GESTURE_SWIPE_RIGHT) {
+            // Вход в режим редактирования
+            is_editing = true;
+            settings_lock();
+            if (current_screen == SCREEN_MENU_HUMIDITY) edit_value = sys_settings.targetHumidity;
+            else if (current_screen == SCREEN_MENU_HEATER) edit_value = sys_settings.waterHeaterEnabled ? 1 : 0;
+            settings_unlock();
+        }
+    } 
+    else if (is_editing) {
+        // Изменение значений
+        if (gesture == GESTURE_SWIPE_LEFT) {
+            is_editing = false; // Отмена
+        } else if (gesture == GESTURE_SWIPE_UP) {
+            edit_value++; // Увеличить
+        } else if (gesture == GESTURE_SWIPE_DOWN) {
+            edit_value--; // Уменьшить
+        } else if (gesture == GESTURE_SWIPE_RIGHT) {
+            // Сохранение
+            settings_lock();
+            if (current_screen == SCREEN_MENU_HUMIDITY) {
+                if (edit_value >= 10 && edit_value <= 90) sys_settings.targetHumidity = edit_value;
+            } else if (current_screen == SCREEN_MENU_HEATER) {
+                sys_settings.waterHeaterEnabled = (edit_value > 0);
+            }
+            settings_unlock();
+            settings_save();
+            is_editing = false;
+        }
+    }
+}
+
+// --- Отрисовка Экранов ---
+static void draw_screen_main(void) {
+    u8g2_SetFont(&u8g2_main, u8g2_font_ncenB14_tr); // Большой шрифт
     
+    // Получаем текущие данные (Для теста берем из настроек, в идеале - глобальные переменные датчиков)
+    settings_lock();
+    int target_h = sys_settings.targetHumidity;
+    settings_unlock();
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "HUM: %d%%", target_h);
+    u8g2_DrawStr(&u8g2_main, 10, 30, buf);
+
+    u8g2_SetFont(&u8g2_main, u8g2_font_ncenB08_tr);
+    climate_state_t state = climate_get_state();
+    if (state == CLIMATE_STATE_HUMIDIFYING) u8g2_DrawStr(&u8g2_main, 10, 50, "Status: HUMIDIFY");
+    else if (state == CLIMATE_STATE_DEHUMIDIFYING) u8g2_DrawStr(&u8g2_main, 10, 50, "Status: DEHUMIDIFY");
+    else u8g2_DrawStr(&u8g2_main, 10, 50, "Status: IDLE");
+}
+
+static void draw_screen_menu(const char* title, int value, const char* unit) {
+    u8g2_SetFont(&u8g2_main, u8g2_font_ncenB08_tr);
+    u8g2_DrawStr(&u8g2_main, 5, 15, title);
+    u8g2_DrawHLine(&u8g2_main, 0, 20, 128);
+
+    u8g2_SetFont(&u8g2_main, u8g2_font_ncenB14_tr);
+    char buf[32];
+    
+    if (is_editing) {
+        // Мигание текста (каждые 500 мс)
+        if ((xTaskGetTickCount() * portTICK_PERIOD_MS) % 1000 > 500) {
+            snprintf(buf, sizeof(buf), "[ %d %s ]", value, unit);
+        } else {
+            snprintf(buf, sizeof(buf), "  %d %s  ", value, unit);
+        }
+    } else {
+        snprintf(buf, sizeof(buf), "%d %s", value, unit);
+    }
+    
+    u8g2_DrawStr(&u8g2_main, 20, 45, buf);
+}
+
+// --- Главная задача ---
+static void ui_task(void *pvParameters) {
+    u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2_main, U8G2_R0, u8g2_byte_hw_i2c_cb, u8g2_gpio_and_delay_cb);
+    u8g2_main.u8x8.i2c_address = 0x3C << 1; 
     u8g2_InitDisplay(&u8g2_main);
     u8g2_SetPowerSave(&u8g2_main, 0);
 
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(200); // Обновление экрана 5 раз в секунду (200 мс)
-
-    char status_buf[32];
-
     while (1) {
-        // Получаем данные от других систем
-        climate_state_t state = climate_get_state();
+        process_ui_gestures();
 
-        // Отрисовка кадра
         u8g2_ClearBuffer(&u8g2_main);
-        
-        // Настройка шрифта
-        u8g2_SetFont(&u8g2_main, u8g2_font_ncenB08_tr); 
-        
-        // Шапка
-        u8g2_DrawStr(&u8g2_main, 2, 10, "Guitar Cabinet OS");
-        u8g2_DrawHLine(&u8g2_main, 0, 12, 128);
 
-        // Вывод текущего состояния климата
-        switch (state) {
-            case CLIMATE_STATE_IDLE: snprintf(status_buf, sizeof(status_buf), "State: IDLE"); break;
-            case CLIMATE_STATE_HUMIDIFYING: snprintf(status_buf, sizeof(status_buf), "State: HUMIDIFY (+)"); break;
-            case CLIMATE_STATE_DEHUMIDIFYING: snprintf(status_buf, sizeof(status_buf), "State: DEHUMIDIFY (-)"); break;
-            case CLIMATE_STATE_DOOR_OPEN: snprintf(status_buf, sizeof(status_buf), "State: DOOR OPEN!"); break;
-            default: snprintf(status_buf, sizeof(status_buf), "State: ERROR"); break;
+        settings_lock();
+        int cur_hum = sys_settings.targetHumidity;
+        int cur_heater = sys_settings.waterHeaterEnabled ? 1 : 0;
+        settings_unlock();
+
+        switch (current_screen) {
+            case SCREEN_MAIN: 
+                draw_screen_main(); 
+                break;
+            case SCREEN_MENU_HUMIDITY: 
+                draw_screen_menu("Target Humidity", is_editing ? edit_value : cur_hum, "%"); 
+                break;
+            case SCREEN_MENU_HEATER: 
+                draw_screen_menu("Water Heater", is_editing ? edit_value : cur_heater, "(1=ON)"); 
+                break;
+            case SCREEN_MENU_SOUND: 
+                draw_screen_menu("Sound Alerts", 1, "(ON)"); 
+                break;
+            case SCREEN_MENU_CALIB: 
+                draw_screen_menu("Calibration", 0, "offset"); 
+                break;
+            case SCREEN_MENU_REBOOT: 
+                draw_screen_menu("System Reboot", 0, ""); 
+                break;
         }
-        u8g2_DrawStr(&u8g2_main, 2, 30, status_buf);
 
-        // Отправка буфера на дисплей
         u8g2_SendBuffer(&u8g2_main);
-
-        // Засыпаем до следующего кадра
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        vTaskDelay(pdMS_TO_TICKS(100)); // 10 FPS
     }
 }
 
 esp_err_t display_manager_init(void) {
-    // Создаем задачу UI (Приоритет 3 - ниже логики, но достаточно для плавности)
-    BaseType_t res = xTaskCreate(ui_task, "ui_task", 6144, NULL, 3, NULL);
-    if (res != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create UI task");
-        return ESP_FAIL;
-    }
+    xTaskCreate(ui_task, "ui_task", 6144, NULL, 3, NULL);
     return ESP_OK;
 }
