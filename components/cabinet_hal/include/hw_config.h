@@ -51,3 +51,7 @@
 #define PIN_I2S_BCLK                13  // SCK (Serial Clock)
 #define PIN_I2S_WS                  32  // WS (Word Select / L-R Clock)
 #define PIN_I2S_DIN                 33  // SD (Serial Data)
+
+// --- Inputs ---
+#define PIN_DOOR_SENSOR             12  // Геркон двери (LOW = Закрыто)
+#define PIN_ORIENTATION_SENSOR      32  // Положение панели: HIGH = Стандарт (A), LOW = Перевернуто 180 (B)
