@@ -26,16 +26,25 @@ bool gesture_is_lock_pressed(void) {
     return lock_button_state;
 }
 
+// Вспомогательная функция для безопасной отправки событий
+static void send_hmi_event(hmi_msg_t *msg) {
+    if (hmi_event_queue != NULL) {
+        if (xQueueSend(hmi_event_queue, msg, pdMS_TO_TICKS(10)) != pdPASS) {
+            ESP_LOGW(TAG, "HMI Queue FULL! Dropping event %d", msg->type);
+        }
+    }
+}
+
 static uint8_t get_global_id(uint8_t mux_index, uint8_t mpr_pin) {
     return (mux_index * 12) + mpr_pin + 1;
 }
 
-static void get_xy_from_id(uint8_t id, int *x, int *y) {
+// Оптимизация: is_flipped передается аргументом, чтобы не читать GPIO в цикле
+static void get_xy_from_id(uint8_t id, int *x, int *y, bool is_flipped) {
     *x = (id - 1) % 3;
     *y = (id - 1) / 3;
 
-    // Учет аппаратного переворота матрицы
-    if (gpio_get_level(PIN_ORIENTATION_SENSOR) == 0) {
+    if (is_flipped) {
         *x = 2 - *x;
         *y = 15 - *y;
     }
@@ -45,17 +54,17 @@ static bool is_door_sensor(uint8_t id) {
     return (id >= 22 && id <= 27);
 }
 
-static hmi_event_type_t analyze_swipe(void) {
+static hmi_event_type_t analyze_swipe(bool is_flipped) {
     if (swipe_len < MIN_SWIPE_LEN) return EVENT_NONE;
 
     int x_first, y_first, x_last, y_last;
-    get_xy_from_id(swipe_buffer[0], &x_first, &y_first);
-    get_xy_from_id(swipe_buffer[swipe_len - 1], &x_last, &y_last);
+    get_xy_from_id(swipe_buffer[0], &x_first, &y_first, is_flipped);
+    get_xy_from_id(swipe_buffer[swipe_len - 1], &x_last, &y_last, is_flipped);
 
     int min_y = 99, max_y = -1;
     for (int i = 0; i < swipe_len; i++) {
         int x, y;
-        get_xy_from_id(swipe_buffer[i], &x, &y);
+        get_xy_from_id(swipe_buffer[i], &x, &y, is_flipped);
         if (y < min_y) min_y = y;
         if (y > max_y) max_y = y;
     }
@@ -74,7 +83,6 @@ static hmi_event_type_t analyze_swipe(void) {
 }
 
 static void mpr121_polling_task(void *pvParameters) {
-    // Инициализация сенсоров через официальный драйвер (Пороги 10 и 4 как в Arduino)
     for (int i = 0; i < NUM_SENSORS; i++) {
         if (mpr121_init(mux_channels[i], 10, 4) == ESP_OK) {
             mpr121_online[i] = true;
@@ -93,14 +101,20 @@ static void mpr121_polling_task(void *pvParameters) {
     int reconnect_timer = 0;
     hmi_msg_t msg;
 
+    // Инициализация для жесткого реал-тайм цикла
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(POLL_RATE_MS);
+
     while (1) {
         int total_active_touches = 0;
         bool only_door_sensors_touched = true;
+        
+        // Читаем GPIO один раз за цикл опроса (Оптимизация)
+        bool is_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 0);
 
         for (int i = 0; i < NUM_SENSORS; i++) {
             if (!mpr121_online[i]) continue; 
 
-            // Читаем состояние через драйвер
             if (mpr121_get_touched(mux_channels[i], &current_status) == ESP_OK) {
                 error_strikes[i] = 0; 
                 
@@ -131,20 +145,20 @@ static void mpr121_polling_task(void *pvParameters) {
                 error_strikes[i]++;
                 if (error_strikes[i] >= 3) {
                     mpr121_online[i] = false;
+                    swipe_len = 0; // СБРОС стейт-машины жестов при отвале сенсора
                     msg.type = EVENT_ERROR_SENSOR_OFFLINE;
                     msg.sensor_index = i;
-                    xQueueSend(hmi_event_queue, &msg, 0);
+                    send_hmi_event(&msg);
                 }
             }
         }
 
-        // Логика удержания кнопки замка
         if (total_active_touches > 0 && only_door_sensors_touched) {
             lock_button_state = true;
             hold_door_cycles++;
             if (hold_door_cycles >= (DOOR_UNLOCK_TIME_MS / POLL_RATE_MS)) {
                 msg.type = EVENT_DOOR_UNLOCK;
-                xQueueSend(hmi_event_queue, &msg, 0);
+                send_hmi_event(&msg);
                 hold_door_cycles = 0;
                 ignore_next_release = true; 
                 swipe_len = 0; 
@@ -154,7 +168,6 @@ static void mpr121_polling_task(void *pvParameters) {
             hold_door_cycles = 0; 
         }
 
-        // Анализ жестов при отпускании
         if (total_active_touches == 0) {
             if (ignore_next_release) {
                 ignore_next_release = false;
@@ -162,8 +175,8 @@ static void mpr121_polling_task(void *pvParameters) {
             } else if (swipe_len > 0) {
                 release_cycles++;
                 if (release_cycles >= 3) { 
-                    msg.type = analyze_swipe();
-                    if (msg.type != EVENT_NONE) xQueueSend(hmi_event_queue, &msg, 0); 
+                    msg.type = analyze_swipe(is_flipped);
+                    if (msg.type != EVENT_NONE) send_hmi_event(&msg); 
                     swipe_len = 0;
                     release_cycles = 0;
                 }
@@ -172,7 +185,6 @@ static void mpr121_polling_task(void *pvParameters) {
             release_cycles = 0;
         }
 
-        // Периодическое переподключение отвалившихся датчиков (раз в 5 сек)
         reconnect_timer++;
         if (reconnect_timer >= (5000 / POLL_RATE_MS)) { 
             reconnect_timer = 0;
@@ -183,12 +195,14 @@ static void mpr121_polling_task(void *pvParameters) {
                         error_strikes[i] = 0; 
                         msg.type = EVENT_INFO_SENSOR_RESTORED;
                         msg.sensor_index = i;
-                        xQueueSend(hmi_event_queue, &msg, 0);
+                        send_hmi_event(&msg);
                     }
                 }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(POLL_RATE_MS));
+        
+        // Гарантируем цикл ровно 50 мс, независимо от таймаутов I2C
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
@@ -203,8 +217,17 @@ esp_err_t gesture_manager_init(void) {
     gpio_config(&io_conf);
 
     hmi_event_queue = xQueueCreate(10, sizeof(hmi_msg_t));
-    if (!hmi_event_queue) return ESP_ERR_NO_MEM;
+    if (!hmi_event_queue) {
+        ESP_LOGE(TAG, "Failed to create HMI queue");
+        return ESP_ERR_NO_MEM;
+    }
 
-    xTaskCreate(mpr121_polling_task, "mpr121_task", 4096, NULL, 6, NULL);
+    BaseType_t res = xTaskCreate(mpr121_polling_task, "mpr121_task", 4096, NULL, 6, NULL);
+    if (res != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create MPR polling task");
+        vQueueDelete(hmi_event_queue);
+        return ESP_ERR_NO_MEM;
+    }
+
     return ESP_OK;
 }
