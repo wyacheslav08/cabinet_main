@@ -2,7 +2,7 @@
 #include "hw_config.h"
 #include "driver/uart.h"
 #include "esp_log.h"
-#include "esp_system.h" // Для esp_restart()
+#include "esp_system.h" 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -10,85 +10,110 @@
 #include <string.h>
 #include <stdlib.h>
 
-static const char *TAG = "UART_MAIN";
+static const char *TAG = "UART_LINK";
 static QueueHandle_t uart_queue;
 
-// Функция разбора входящих команд от Gateway (от Web App)
-static void process_incoming_command(char* cmd_str) {
-    // Убираем невидимые символы переноса строки
-    cmd_str[strcspn(cmd_str, "\r\n")] = 0;
-    if (strlen(cmd_str) == 0) return; // Игнорируем пустые строки
-    
-    ESP_LOGI(TAG, "Gateway commanded: %s", cmd_str);
+// =========================================================================
+// ВНУТРЕННИЙ ПАРСЕР KEY=VALUE
+// =========================================================================
+static void apply_key_value(const char *key, const char *val) {
+    settings_lock();
 
- // 1. Команда изменения целевой влажности (SET_HUM:45)
-    if (strncmp(cmd_str, "SET_HUM:", 8) == 0) {
-        int new_hum = atoi(cmd_str + 8);
-        if (new_hum >= 10 && new_hum <= 90) {
-            settings_lock();
-            sys_settings.targetHumidity = new_hum;
-            settings_unlock();
-            settings_save();
-            ESP_LOGI(TAG, "Target humidity updated to %d%%", new_hum);
+    // --- ОБЩИЕ НАСТРОЙКИ ---
+    if (strcmp(key, "targetHumidity") == 0) sys_settings.targetHumidity = atoi(val);
+    else if (strcmp(key, "lockHoldTime") == 0) sys_settings.lockHoldTime = atoi(val);
+    else if (strcmp(key, "lockTimeIndex") == 0) sys_settings.lockTimeIndex = atoi(val);
+    else if (strcmp(key, "menuTimeoutOptionIndex") == 0) sys_settings.menuTimeoutOptionIndex = atoi(val);
+    else if (strcmp(key, "screenTimeoutOptionIndex") == 0) sys_settings.screenTimeoutOptionIndex = atoi(val);
+    else if (strcmp(key, "doorSoundEnabled") == 0) sys_settings.doorSoundEnabled = (atoi(val) == 1);
+    else if (strcmp(key, "waterSilicaSoundEnabled") == 0) sys_settings.waterSilicaSoundEnabled = (atoi(val) == 1);
+    else if (strcmp(key, "waterHeaterEnabled") == 0) sys_settings.waterHeaterEnabled = (atoi(val) == 1);
+    else if (strcmp(key, "waterHeaterMaxTemp") == 0) sys_settings.waterHeaterMaxTemp = atoi(val);
+
+    // --- ЛОГИКА ВЛАЖНОСТИ ---
+    else if (strcmp(key, "deadZonePercent") == 0) sys_settings.deadZonePercent = atof(val);
+    else if (strcmp(key, "minHumidityChangeForTimeout") == 0) sys_settings.minHumidityChangeForTimeout = atof(val);
+    else if (strcmp(key, "maxOperationDuration") == 0) sys_settings.maxOperationDuration = atoi(val) * 60000; // Web шлет минуты, храним мс
+    else if (strcmp(key, "operationCooldown") == 0) sys_settings.operationCooldown = atoi(val) * 60000;
+    else if (strcmp(key, "maxSafeHumidity") == 0) sys_settings.maxSafeHumidity = atof(val);
+    else if (strcmp(key, "resourceCheckDiff") == 0) sys_settings.resourceCheckDiff = atof(val);
+    else if (strcmp(key, "humidityHysteresis") == 0) sys_settings.humidityHysteresis = atof(val);
+    else if (strcmp(key, "resourceLowFaultThreshold") == 0) sys_settings.resourceLowFaultThreshold = atoi(val);
+    else if (strcmp(key, "resourceEmptyFaultThreshold") == 0) sys_settings.resourceEmptyFaultThreshold = atoi(val);
+
+    // --- КАЛИБРОВКА SHT40 ---
+    else if (strcmp(key, "tempOffsetTop") == 0) sys_settings.tempOffsetTop = atoi(val);
+    else if (strcmp(key, "humOffsetTop") == 0) sys_settings.humOffsetTop = atoi(val);
+    else if (strcmp(key, "tempOffsetHum") == 0) sys_settings.tempOffsetHum = atoi(val);
+    else if (strcmp(key, "humOffsetHum") == 0) sys_settings.humOffsetHum = atoi(val);
+
+    // --- АВТО-ПЕРЕЗАГРУЗКА ---
+    // (Если добавишь логику таймера в будущем)
+    // else if (strcmp(key, "autoRebootEnabled") == 0) ...
+
+    settings_unlock();
+}
+
+// =========================================================================
+// ОБРАБОТЧИК ВХОДЯЩИХ СТРОК
+// =========================================================================
+static void process_incoming_command(char* cmd_str) {
+    // Удаляем \r и \n в конце строки
+    cmd_str[strcspn(cmd_str, "\r\n")] = 0;
+    if (strlen(cmd_str) == 0) return;
+    
+    ESP_LOGI(TAG, "RX: %s", cmd_str);
+
+    // 1. ОБРАБОТКА ПАКЕТОВ НАСТРОЕК (SET_GEN:, SET_HUMLOG:, SET_CALIB:)
+    if (strncmp(cmd_str, "SET_", 4) == 0) {
+        char *data_start = strchr(cmd_str, ':');
+        if (data_start) {
+            data_start++; // Пропускаем двоеточие
+            
+            char *saveptr_comma;
+            // Разбиваем строку по запятым (пример: "targetHumidity=50,lockHoldTime=1000")
+            char *pair = strtok_r(data_start, ",", &saveptr_comma);
+            
+            while (pair != NULL) {
+                char *saveptr_eq;
+                // Разбиваем пару по знаку равно
+                char *key = strtok_r(pair, "=", &saveptr_eq);
+                char *val = strtok_r(NULL, "=", &saveptr_eq);
+                
+                if (key && val) {
+                    apply_key_value(key, val);
+                }
+                pair = strtok_r(NULL, ",", &saveptr_comma);
+            }
+            // Автоматически сохраняем во Flash после пачки изменений
+            settings_save(); 
+            ESP_LOGI(TAG, "Settings updated and saved to NVS.");
         }
-    }
-    else if (strncmp(cmd_str, "SET_GEN:", 8) == 0) {
-        char* p = cmd_str + 8;
-        settings_lock();
-        char* ptr;
-        if ((ptr = strstr(p, "targetHumidity=")) != NULL) sys_settings.targetHumidity = atoi(ptr + 15);
-        if ((ptr = strstr(p, "lockHoldTime=")) != NULL) sys_settings.lockHoldTime = atoi(ptr + 13);
-        if ((ptr = strstr(p, "lockTimeIndex=")) != NULL) sys_settings.lockTimeIndex = atoi(ptr + 14);
-        if ((ptr = strstr(p, "menuTimeoutOptionIndex=")) != NULL) sys_settings.menuTimeoutOptionIndex = atoi(ptr + 23);
-        if ((ptr = strstr(p, "screenTimeoutOptionIndex=")) != NULL) sys_settings.screenTimeoutOptionIndex = atoi(ptr + 25);
-        if ((ptr = strstr(p, "doorSoundEnabled=")) != NULL) sys_settings.doorSoundEnabled = (atoi(ptr + 17) == 1);
-        if ((ptr = strstr(p, "waterSilicaSoundEnabled=")) != NULL) sys_settings.waterSilicaSoundEnabled = (atoi(ptr + 24) == 1);
-        if ((ptr = strstr(p, "waterHeaterEnabled=")) != NULL) sys_settings.waterHeaterEnabled = (atoi(ptr + 19) == 1);
-        if ((ptr = strstr(p, "waterHeaterMaxTemp=")) != NULL) sys_settings.waterHeaterMaxTemp = atoi(ptr + 19);
-        settings_unlock();
-        settings_save();
-    }
-    else if (strncmp(cmd_str, "SET_HUMLOG:", 11) == 0) {
-        char* p = cmd_str + 11;
-        settings_lock();
-        char* ptr;
-        if ((ptr = strstr(p, "deadZonePercent=")) != NULL) sys_settings.deadZonePercent = atof(ptr + 16);
-        if ((ptr = strstr(p, "minHumidityChangeForTimeout=")) != NULL) sys_settings.minHumidityChangeForTimeout = atof(ptr + 28);
-        if ((ptr = strstr(p, "maxOperationDuration=")) != NULL) sys_settings.maxOperationDuration = atoi(ptr + 21) * 60000;
-        if ((ptr = strstr(p, "operationCooldown=")) != NULL) sys_settings.operationCooldown = atoi(ptr + 18) * 60000;
-        if ((ptr = strstr(p, "maxSafeHumidity=")) != NULL) sys_settings.maxSafeHumidity = atof(ptr + 16);
-        if ((ptr = strstr(p, "resourceCheckDiff=")) != NULL) sys_settings.resourceCheckDiff = atof(ptr + 18);
-        if ((ptr = strstr(p, "humidityHysteresis=")) != NULL) sys_settings.humidityHysteresis = atof(ptr + 19);
-        if ((ptr = strstr(p, "resourceLowFaultThreshold=")) != NULL) sys_settings.resourceLowFaultThreshold = atoi(ptr + 26);
-        if ((ptr = strstr(p, "resourceEmptyFaultThreshold=")) != NULL) sys_settings.resourceEmptyFaultThreshold = atoi(ptr + 28);
-        settings_unlock();
-        settings_save();
-    }
-    else if (strncmp(cmd_str, "SET_CALIB:", 10) == 0) {
-        char* p = cmd_str + 10;
-        settings_lock();
-        char* ptr;
-        if ((ptr = strstr(p, "tempOffsetTop=")) != NULL) sys_settings.tempOffsetTop = atoi(ptr + 14);
-        if ((ptr = strstr(p, "humOffsetTop=")) != NULL) sys_settings.humOffsetTop = atoi(ptr + 13);
-        if ((ptr = strstr(p, "tempOffsetHum=")) != NULL) sys_settings.tempOffsetHum = atoi(ptr + 14);
-        if ((ptr = strstr(p, "humOffsetHum=")) != NULL) sys_settings.humOffsetHum = atoi(ptr + 13);
-        settings_unlock();
-        settings_save();
-    }
-    else if (strncmp(cmd_str, "SET_HWTUNE:", 11) == 0) {
-        char* p = cmd_str + 11;
-        settings_lock();
-        char* ptr;
-        if ((ptr = strstr(p, "hxScale=")) != NULL) sys_settings.hx711ScaleFactor = atof(ptr + 8);
-        if ((ptr = strstr(p, "hxTare=")) != NULL) sys_settings.hx711TareOffset = atoi(ptr + 7);
-        if ((ptr = strstr(p, "dspPing=")) != NULL) sys_settings.dspPingDurationMs = atoi(ptr + 8);
-        settings_unlock();
-        settings_save();
-        ESP_LOGI(TAG, "Hardware tuning updated!");
+    } 
+    // 2. ОБРАБОТКА СИСТЕМНЫХ КОМАНД (Кнопки в Web UI)
+    else if (strncmp(cmd_str, "CMD:", 4) == 0) {
+        char *cmd = cmd_str + 4;
+        
+        if (strcmp(cmd, "REBOOT") == 0) {
+            ESP_LOGW(TAG, "Reboot command received from Web UI!");
+            vTaskDelay(pdMS_TO_TICKS(500));
+            esp_restart();
+        } 
+        else if (strcmp(cmd, "RESET_TO_DEFAULTS") == 0) {
+            ESP_LOGW(TAG, "Factory Reset command received from Web UI!");
+            settings_reset_to_defaults();
+            vTaskDelay(pdMS_TO_TICKS(500));
+            esp_restart();
+        }
+        else if (strcmp(cmd, "SAVE") == 0) {
+            settings_save();
+        }
     }
 }
 
-// Задача, обрабатывающая входящие UART пакеты
+// =========================================================================
+// ЗАДАЧА СЛУШАТЕЛЯ UART
+// =========================================================================
 static void uart_event_task(void *pvParameters) {
     uart_event_t event;
     uint8_t* dtmp = (uint8_t*) malloc(COMM_UART_RX_BUF_SIZE);
@@ -119,7 +144,7 @@ esp_err_t uart_link_init(void) {
     uart_config_t uart_config = {
         .baud_rate = COMM_UART_BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
+        .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
@@ -129,7 +154,7 @@ esp_err_t uart_link_init(void) {
     ESP_ERROR_CHECK(uart_set_pin(COMM_UART_NUM, COMM_UART_TX_PIN, COMM_UART_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_driver_install(COMM_UART_NUM, COMM_UART_RX_BUF_SIZE * 2, COMM_UART_RX_BUF_SIZE * 2, 20, &uart_queue, 0));
 
-    xTaskCreate(uart_event_task, "uart_main_task", 4096, NULL, 5, NULL);
+    xTaskCreate(uart_event_task, "uart_rx_task", 4096, NULL, 5, NULL);
     return ESP_OK;
 }
 

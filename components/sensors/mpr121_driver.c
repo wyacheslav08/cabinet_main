@@ -6,59 +6,69 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-static const char *TAG = "MPR121";
+static const char *TAG = "MPR121_DRV";
 
-static esp_err_t write_reg(uint8_t reg, uint8_t value) {
+// Внутренняя функция записи в регистр с учетом мультиплексора
+static esp_err_t write_reg(uint8_t mux_channel, uint8_t reg, uint8_t value) {
     uint8_t data[2] = {reg, value};
-    // Уменьшенный таймаут (20мс) для отказоустойчивости. Если чип сгорел, мы быстро пойдем дальше.
-    return i2c_master_write_to_device(I2C_MASTER_NUM, MPR121_I2C_ADDRESS, data, 2, pdMS_TO_TICKS(20));
-}
-
-esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_threshold, uint8_t release_threshold) {
     i2c_manager_lock();
     esp_err_t err = i2c_manager_set_mux(MUX_ADDR_TOUCH, mux_channel);
-    if (err != ESP_OK) goto exit;
+    if (err == ESP_OK) {
+        err = i2c_master_write_to_device(I2C_MASTER_NUM, MPR121_I2C_ADDRESS, data, 2, pdMS_TO_TICKS(20));
+    }
+    i2c_manager_unlock();
+    return err;
+}
 
-    // Soft reset
-    write_reg(0x80, 0x63);
-    vTaskDelay(pdMS_TO_TICKS(10)); 
+esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_thresh, uint8_t release_thresh) {
+    esp_err_t err;
 
-    write_reg(0x5E, 0x00); // Отключаем электроды для настройки
+    // 1. Программный сброс чипа
+    err = write_reg(mux_channel, 0x80, 0x63);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "MPR121 not found on MUX channel %d", mux_channel);
+        return err;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10)); // Ожидание перезагрузки чипа
 
-    // Настройка порогов (10 и 4)
+    // 2. Перевод чипа в Stop Mode (отключение электродов для настройки)
+    write_reg(mux_channel, 0x5E, 0x00);
+
+    // 3. Настройка порогов для всех 12 электродов
     for (uint8_t i = 0; i < 12; i++) {
-        write_reg(0x41 + (2 * i), touch_threshold);
-        write_reg(0x42 + (2 * i), release_threshold);
+        write_reg(mux_channel, 0x41 + (2 * i), touch_thresh);
+        write_reg(mux_channel, 0x42 + (2 * i), release_thresh);
     }
 
-    // Базовые настройки фильтрации
-    write_reg(0x2B, 0x01); write_reg(0x2C, 0x01); write_reg(0x2D, 0x00); write_reg(0x2E, 0x00);
-    write_reg(0x2F, 0x01); write_reg(0x30, 0x01); write_reg(0x31, 0xFF); write_reg(0x32, 0x02);
+    // 4. Фильтрация шумов (MHD, NHD, NCL, FDL)
+    write_reg(mux_channel, 0x2B, 0x01); write_reg(mux_channel, 0x2C, 0x01);
+    write_reg(mux_channel, 0x2D, 0x00); write_reg(mux_channel, 0x2E, 0x00);
+    write_reg(mux_channel, 0x2F, 0x01); write_reg(mux_channel, 0x30, 0x01);
+    write_reg(mux_channel, 0x31, 0xFF); write_reg(mux_channel, 0x32, 0x02);
 
-    // --- МАГИЯ ПРОБИВАНИЯ ДЕРЕВА (Auto-Configuration) ---
-    write_reg(0x7B, 0x0B); // Включаем автоконфигурацию
-    write_reg(0x7C, 0x00); // 
-    write_reg(0x7D, 0xC8); // Upper Limit (USL) = 200
-    write_reg(0x7E, 0x82); // Lower Limit (LSL) = 130
-    write_reg(0x7F, 0xB4); // Target Limit (TL) = 180
+    // 5. КРИТИЧЕСКИ ВАЖНО: Настройка автоконфигурации для деревянной панели
+    write_reg(mux_channel, 0x7B, 0x0B); // Включение Auto-Config и Auto-Reconfig
+    write_reg(mux_channel, 0x7C, 0x00); 
+    write_reg(mux_channel, 0x7D, 0xC8); // USL (Upper Limit) = 200
+    write_reg(mux_channel, 0x7E, 0x82); // LSL (Lower Limit) = 130
+    write_reg(mux_channel, 0x7F, 0xB4); // TL (Target Limit) = 180
 
-    // Токи заряда (Пусть чип сам подберет их через автоконфигурацию)
-    write_reg(0x5C, 0x00); // First Filter Config
-    write_reg(0x5D, 0x20); // Second Filter Config
+    // 6. Настройка фильтра токов заряда
+    write_reg(mux_channel, 0x5C, 0x00); // First Filter Config
+    write_reg(mux_channel, 0x5D, 0x20); // Second Filter Config
 
-    // Включаем электроды (0..11) и базовое отслеживание
-    err = write_reg(0x5E, 0x8F);
+    // 7. Включение 12 электродов + отслеживание базовой линии (Baseline Tracking)
+    // 0x8F = Включить 12 электродов с калибровкой базовой линии (БЕЗ ЭТОГО НЕ РАБОТАЕТ ЧЕРЕЗ ДЕРЕВО!)
+    err = write_reg(mux_channel, 0x5E, 0x8F);
 
-exit:
-    i2c_manager_unlock();
-    if (err == ESP_OK) ESP_LOGI(TAG, "MPR121 initialized on channel %d", mux_channel);
-    else ESP_LOGE(TAG, "Failed to init MPR121 on channel %d", mux_channel);
-    
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "MPR121 [MUX Ch %d] successfully initialized with Wood Auto-Config", mux_channel);
+    }
     return err;
 }
 
 esp_err_t mpr121_get_touched(uint8_t mux_channel, uint16_t *touched_mask) {
-    uint8_t reg = 0x00; 
+    uint8_t reg = 0x00;
     uint8_t rx_data[2] = {0, 0};
 
     i2c_manager_lock();
@@ -72,7 +82,7 @@ esp_err_t mpr121_get_touched(uint8_t mux_channel, uint16_t *touched_mask) {
     if (err == ESP_OK) {
         *touched_mask = (rx_data[1] << 8) | rx_data[0];
     } else {
-        *touched_mask = 0; // Отказоустойчивость: если чип отвалился, считаем, что касаний нет
+        *touched_mask = 0; // При ошибке I2C считаем, что касаний нет (Defensive Programming)
     }
     return err;
 }

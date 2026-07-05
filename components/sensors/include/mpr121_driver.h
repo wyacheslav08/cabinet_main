@@ -8,10 +8,17 @@ extern "C" {
 
 #define MPR121_I2C_ADDRESS 0x5A
 
-// Инициализация MPR121 на заданном канале с указанными порогами (Touch / Release)
-esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_threshold, uint8_t release_threshold);
+/**
+ * @brief Инициализация MPR121 с включением автоконфигурации для работы через дерево.
+ * @param mux_channel Канал I2C мультиплексора PCA9548A (0-7)
+ * @param touch_thresh Порог срабатывания касания (рекомендуется 10)
+ * @param release_thresh Порог отпускания (рекомендуется 4)
+ */
+esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_thresh, uint8_t release_thresh);
 
-// Чтение состояния 12 электродов (битовая маска)
+/**
+ * @brief Чтение 16-битной маски состояния электродов (0..11 биты).
+ */
 esp_err_t mpr121_get_touched(uint8_t mux_channel, uint16_t *touched_mask);
 
 #ifdef __cplusplus
