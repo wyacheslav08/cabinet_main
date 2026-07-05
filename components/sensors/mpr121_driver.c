@@ -8,7 +8,6 @@
 
 static const char *TAG = "MPR121_DRV";
 
-// Макрос для немедленного выхода при ошибке I2C (Fail-Fast)
 #define I2C_CHECK(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
 
 static esp_err_t write_reg(uint8_t mux_channel, uint8_t reg, uint8_t value) {
@@ -25,7 +24,7 @@ static esp_err_t write_reg(uint8_t mux_channel, uint8_t reg, uint8_t value) {
 esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_thresh, uint8_t release_thresh) {
     // 1. Программный сброс чипа
     I2C_CHECK(write_reg(mux_channel, 0x80, 0x63));
-    vTaskDelay(pdMS_TO_TICKS(10)); // Ожидание перезагрузки чипа
+    vTaskDelay(pdMS_TO_TICKS(10)); 
 
     // 2. Перевод чипа в Stop Mode (отключение электродов для настройки)
     I2C_CHECK(write_reg(mux_channel, 0x5E, 0x00));
@@ -42,24 +41,40 @@ esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_thresh, uint8_t release
     I2C_CHECK(write_reg(mux_channel, 0x2F, 0x01)); I2C_CHECK(write_reg(mux_channel, 0x30, 0x01));
     I2C_CHECK(write_reg(mux_channel, 0x31, 0xFF)); I2C_CHECK(write_reg(mux_channel, 0x32, 0x02));
 
-    // 5. Настройка автоконфигурации для деревянной панели
+#if MPR121_USE_AUTO_CONFIG
+    // 5. Включение автоконфигурации (Оптимально для финального устройства)
     I2C_CHECK(write_reg(mux_channel, 0x7B, 0x0B)); 
     I2C_CHECK(write_reg(mux_channel, 0x7C, 0x00)); 
     I2C_CHECK(write_reg(mux_channel, 0x7D, 0xC8)); 
     I2C_CHECK(write_reg(mux_channel, 0x7E, 0x82)); 
     I2C_CHECK(write_reg(mux_channel, 0x7F, 0xB4)); 
 
-    // 6. Настройка фильтра токов заряда
+    // 6. Настройка AFE (0x00 = ток подбирается автоматически алгоритмом чипа)
     I2C_CHECK(write_reg(mux_channel, 0x5C, 0x00)); 
     I2C_CHECK(write_reg(mux_channel, 0x5D, 0x20)); 
+#else
+    // 5. Отключение автоконфигурации (Для шумного тестового стенда)
+    I2C_CHECK(write_reg(mux_channel, 0x7B, 0x00)); 
+    
+    // 6. Установка жестко заданных статичных токов и таймингов заряда
+    I2C_CHECK(write_reg(mux_channel, 0x5C, MPR121_MANUAL_CDC)); 
+    I2C_CHECK(write_reg(mux_channel, 0x5D, MPR121_MANUAL_CDT)); 
+#endif
 
-    // 7. Включение 12 электродов + Baseline Tracking
+    // 7. Включение 12 электродов и настройка Baseline Tracking
+#if MPR121_BASELINE_TRACKING
+    // 0x8F: CL=10 (Baseline Tracking ВКЛ, старт с текущего значения), ELE=1111 (12 электродов)
     esp_err_t err = write_reg(mux_channel, 0x5E, 0x8F);
+#else
+    // 0x4F: CL=01 (Baseline Tracking ВЫКЛ, жесткая статика), ELE=1111 (12 электродов)
+    esp_err_t err = write_reg(mux_channel, 0x5E, 0x4F);
+#endif
 
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "MPR121 [MUX Ch %d] successfully initialized with Wood Auto-Config", mux_channel);
+        ESP_LOGI(TAG, "MPR121 [MUX Ch %d] init OK (AutoCfg: %d, Track: %d)", 
+                 mux_channel, MPR121_USE_AUTO_CONFIG, MPR121_BASELINE_TRACKING);
     } else {
-        ESP_LOGE(TAG, "MPR121 [MUX Ch %d] init failed at final step", mux_channel);
+        ESP_LOGE(TAG, "MPR121 [MUX Ch %d] init failed", mux_channel);
     }
     return err;
 }
@@ -79,7 +94,7 @@ esp_err_t mpr121_get_touched(uint8_t mux_channel, uint16_t *touched_mask) {
     if (err == ESP_OK) {
         *touched_mask = (rx_data[1] << 8) | rx_data[0];
     } else {
-        *touched_mask = 0; // Defensive Programming
+        *touched_mask = 0; 
     }
     return err;
 }
