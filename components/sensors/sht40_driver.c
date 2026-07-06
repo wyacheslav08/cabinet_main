@@ -35,7 +35,7 @@ esp_err_t sht40_read(uint8_t mux_channel, float *temperature, float *humidity) {
     }
 
     // 2. Отправляем команду измерения
-    err = i2c_master_write_to_device(I2C_MASTER_NUM, SHT40_I2C_ADDRESS, &cmd, 1, pdMS_TO_TICKS(100));
+    err = i2c_master_write_to_device(I2C_MASTER_NUM, SHT40_I2C_ADDR, &cmd, 1, pdMS_TO_TICKS(100));
     if (err != ESP_OK) {
         i2c_manager_unlock();
         return err;
@@ -45,7 +45,7 @@ esp_err_t sht40_read(uint8_t mux_channel, float *temperature, float *humidity) {
     vTaskDelay(pdMS_TO_TICKS(10));
     
     // 4. Читаем 6 байт результата
-    err = i2c_master_read_from_device(I2C_MASTER_NUM, SHT40_I2C_ADDRESS, rx_data, 6, pdMS_TO_TICKS(100));
+    err = i2c_master_read_from_device(I2C_MASTER_NUM, SHT40_I2C_ADDR, rx_data, 6, pdMS_TO_TICKS(100));
     i2c_manager_unlock(); // Освобождаем шину
     
     if (err != ESP_OK) return err;

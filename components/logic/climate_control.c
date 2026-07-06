@@ -1,150 +1,91 @@
 #include "climate_control.h"
-#include "hw_config.h"
-#include "pwm_manager.h"
 #include "sht40_driver.h"
-#include "settings_manager.h"
-#include "driver/gpio.h"
+#include "display_manager.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"
-#include "weight_manager.h"
+#include <stdio.h>
+#include <string.h>
 
-static const char *TAG = "CLIMATE";
-static volatile climate_state_t current_state = CLIMATE_STATE_IDLE;
+static const char *TAG = "CLIMATE_TEST";
 
-climate_state_t climate_get_state(void) {
-    return current_state;
+// Внешний хэндл дисплея, который инициализируется в main.c
+extern display_handle_t s_display_handle;
+
+/**
+ * @brief Вспомогательная функция для форматирования данных датчика в строку.
+ * Если датчик отвечает (is_valid == true) — выводит значения.
+ * Если датчик отключен или сбой CRC — выводит "NON".
+ */
+static void format_sensor_data(const sht40_reading_t *reading, char *out_buffer, size_t max_len) {
+    if (reading->is_valid) {
+        snprintf(out_buffer, max_len, "%.1f°C / %.0f%%", reading->temperature, reading->humidity);
+    } else {
+        snprintf(out_buffer, max_len, "NON");
+    }
 }
 
-// Выключает все исполнительные устройства
-static void stop_all_actuators(void) {
-    pwm_set_hum_heater(0);
-    pwm_set_regen_heater(0);
-    pwm_set_hum_fan(0);
-    pwm_set_dehum_fan(0);
-    pwm_set_exhaust_fan(0);
-    pwm_set_servo_angle(0); // Закрыть заслонку
-}
+/**
+ * @brief Тестовая задача опроса климата (Без логики управления ШИМ).
+ * Привязана к Core 1 (APP_CPU). Опрашивает 4 датчика и шлет данные в UI.
+ */
+void climate_control_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Starting Climate Control Sensor Test Task on Core 1...");
 
-// Главный конечный автомат (FreeRTOS Task)
-static void climate_task(void *pvParameters) {
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(3000); // Строгий цикл 3 секунды
+    // 1. Инициализация подсистемы датчиков SHT40 (проверка шины и мультиплексора)
+    sht40_driver_init();
 
-    float temp = 0.0f, hum = 0.0f;
-    
+    cabinet_climate_data_t climate_data;
+    char str_main[24], str_hum[24], str_dehum[24], str_ext[24];
+
+    // Статическая структура для UI, чтобы не заполнять мусором остальные поля (весы, wifi)
+    static ui_status_data_t ui_data = {
+        .weight_grams = 0,
+        .is_guitar_present = false,
+        .wifi_rssi_percent = 100,
+        .is_ble_connected = false,
+        .is_locked = true,
+        .is_heating = false,
+        .is_humidifying = false,
+        .is_dehumidifying = false
+    };
+
     while (1) {
-        // 1. Читаем датчик двери
-        bool is_door_open = (gpio_get_level(PIN_DOOR_SENSOR) == 1);
-        static bool was_door_open = false;
+        // 2. Потокобезопасный опрос всех 4-х датчиков через PCA9548A
+        sht40_read_all(&climate_data);
 
-        if (is_door_open) {
-            if (current_state != CLIMATE_STATE_DOOR_OPEN) {
-                ESP_LOGW(TAG, "Door opened! Suspending climate control.");
-                stop_all_actuators();
-                current_state = CLIMATE_STATE_DOOR_OPEN;
-                current_state = CLIMATE_STATE_DOOR_OPEN;
-                was_door_open = true;
-            }
+        // 3. Форматируем результаты в строки (с проверкой на "NON")
+        format_sensor_data(&climate_data.sensors[SHT40_MAIN],         str_main,  sizeof(str_main));
+        format_sensor_data(&climate_data.sensors[SHT40_HUMIDIFIER],   str_hum,   sizeof(str_hum));
+        format_sensor_data(&climate_data.sensors[SHT40_DEHUMIDIFIER], str_dehum, sizeof(str_dehum));
+        format_sensor_data(&climate_data.sensors[SHT40_EXTERNAL],     str_ext,   sizeof(str_ext));
+
+        // 4. Вывод таблицы показаний всех 4-х датчиков в терминал (Монитор порта)
+        ESP_LOGI(TAG, "==================================================");
+        ESP_LOGI(TAG, " [1] MAIN (Guitar)   : %s", str_main);
+        ESP_LOGI(TAG, " [2] HUMIDIFIER      : %s", str_hum);
+        ESP_LOGI(TAG, " [3] DEHUMIDIFIER    : %s", str_dehum);
+        ESP_LOGI(TAG, " [4] EXTERNAL (Room) : %s", str_ext);
+        ESP_LOGI(TAG, "==================================================");
+
+        // 5. Подготовка данных для ЖК-экрана ST7735
+        // Передаем показания ОСНОВНОГО датчика (SHT40_MAIN) в статус-бар экрана.
+        if (climate_data.sensors[SHT40_MAIN].is_valid) {
+            ui_data.temperature = climate_data.sensors[SHT40_MAIN].temperature;
+            ui_data.humidity    = climate_data.sensors[SHT40_MAIN].humidity;
         } else {
-            if (was_door_open) {
-                ESP_LOGI(TAG, "Door closed! Analyzing contents...");
-                was_door_open = false;
-                
-                // Даем датчику веса 1 секунду успокоиться после хлопка дверью
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                
-                int32_t current_weight = 0;
-                if (weight_get_grams(&current_weight) == ESP_OK) {
-                    ESP_LOGI(TAG, "Measured weight: %ld g", current_weight);
-                    
-                    const guitar_profile_t* guitar = weight_identify_guitar(current_weight);
-                    if (guitar != NULL) {
-                        // Меняем целевую влажность под конкретную гитару!
-                        settings_lock();
-                        if (sys_settings.targetHumidity != guitar->target_humidity) {
-                            sys_settings.targetHumidity = guitar->target_humidity;
-                            ESP_LOGI(TAG, "Auto-adjusted target humidity to %d%% for %s", 
-                                     guitar->target_humidity, guitar->name);
-                            // Сохраняем во flash
-                            settings_unlock();
-                            settings_save();
-                        } else {
-                            settings_unlock();
-                        }
-                    }
-                }
-            }
-            // 2. Читаем датчик климата
-            esp_err_t err = sht40_read(MUX_CH_SHT40_TOP, &temp, &hum);
-            
-            if (err != ESP_OK) {
-                if (current_state != CLIMATE_STATE_ERROR) {
-                    ESP_LOGE(TAG, "Sensor error! Stopping actuators.");
-                    stop_all_actuators();
-                    current_state = CLIMATE_STATE_ERROR;
-                }
-            } else {
-                // 3. Получаем настройки пользователя (потокобезопасно)
-                settings_lock();
-                int target_hum = sys_settings.targetHumidity;
-                float dead_zone = sys_settings.deadZonePercent;
-                settings_unlock();
-
-                // 4. Логика Конечного Автомата
-                if (current_state == CLIMATE_STATE_DOOR_OPEN || current_state == CLIMATE_STATE_ERROR) {
-                    current_state = CLIMATE_STATE_IDLE; // Сброс ошибки/двери
-                }
-
-                // Включаем увлажнение
-                if (hum < (target_hum - dead_zone) && current_state != CLIMATE_STATE_HUMIDIFYING) {
-                    ESP_LOGI(TAG, "Start Humidifying (Current: %.1f%%, Target: %d%%)", hum, target_hum);
-                    stop_all_actuators(); // Безопасное переключение
-                    pwm_set_hum_heater(100);  // ТЭН увлажнителя на 100%
-                    pwm_set_hum_fan(50);      // Вентилятор на 50%
-                    current_state = CLIMATE_STATE_HUMIDIFYING;
-                }
-                // Включаем осушение
-                else if (hum > (target_hum + dead_zone) && current_state != CLIMATE_STATE_DEHUMIDIFYING) {
-                    ESP_LOGI(TAG, "Start Dehumidifying (Current: %.1f%%, Target: %d%%)", hum, target_hum);
-                    stop_all_actuators();
-                    pwm_set_dehum_fan(100);   // Прогоняем воздух через силикагель
-                    current_state = CLIMATE_STATE_DEHUMIDIFYING;
-                }
-                // Достигли цели - выключаем
-                else if (hum >= (target_hum - 0.5f) && hum <= (target_hum + 0.5f) && current_state != CLIMATE_STATE_IDLE) {
-                    ESP_LOGI(TAG, "Target reached (%.1f%%). Idling.", hum);
-                    stop_all_actuators();
-                    current_state = CLIMATE_STATE_IDLE;
-                }
-            }
+            // Архитектурный флаг: передаем заведомо невозможную температуру (-100.0),
+            // чтобы модуль дисплея понял, что датчик в состоянии "NON"
+            ui_data.temperature = -100.0f; 
+            ui_data.humidity    = -100.0f;
         }
 
-        // Засыпаем ровно до следующего 3-секундного тика (экономим CPU)
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        // 6. Потокобезопасная отправка данных на экран (защищено мьютексом LVGL внутри)
+        if (s_display_handle != NULL) {
+            display_manager_update_status(s_display_handle, &ui_data);
+        }
+
+        // Пауза 2 секунды перед следующим циклом опроса
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
-}
-
-esp_err_t climate_control_init(void) {
-    // Настраиваем пин двери
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << PIN_DOOR_SENSOR),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    gpio_config(&io_conf);
-
-    stop_all_actuators();
-
-    // Запускаем задачу (Приоритет 5 - выше среднего, стек 4КБ)
-    BaseType_t res = xTaskCreate(climate_task, "climate_task", 4096, NULL, 5, NULL);
-    if (res != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create climate task");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Climate control initialized");
-    return ESP_OK;
 }
