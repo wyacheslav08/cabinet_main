@@ -41,24 +41,31 @@ static uint8_t u8g2_gpio_and_delay_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int
 }
 
 static uint8_t u8g2_byte_hw_i2c_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr) {
-    static uint8_t buffer[128]; 
+    // Используем выделение в куче, так как размер I2C пакета U8G2 может достигать 128 байт.
+    // Так как это вызывается только из одной задачи, фрагментация минимизируется.
+    static uint8_t *buffer = NULL; 
     static uint8_t buf_idx = 0;
 
     switch(msg) {
-        case U8X8_MSG_BYTE_SEND:
-            memcpy(&buffer[buf_idx], arg_ptr, arg_int);
-            buf_idx += arg_int;
-            break;
         case U8X8_MSG_BYTE_START_TRANSFER:
+            if (buffer == NULL) buffer = malloc(128); // Выделяем один раз
             buf_idx = 0;
             break;
-        case U8X8_MSG_BYTE_END_TRANSFER:
-            i2c_manager_lock();
-            if (i2c_manager_set_mux(MUX_ADDR_SENSORS, MUX_CH_OLED_MAIN) == ESP_OK) {
-                uint8_t i2c_addr = u8x8_GetI2CAddress(u8x8) >> 1; 
-                i2c_master_write_to_device(I2C_MASTER_NUM, i2c_addr, buffer, buf_idx, pdMS_TO_TICKS(100));
+        case U8X8_MSG_BYTE_SEND:
+            if (buffer && (buf_idx + arg_int <= 128)) {
+                memcpy(&buffer[buf_idx], arg_ptr, arg_int);
+                buf_idx += arg_int;
             }
-            i2c_manager_unlock();
+            break;
+        case U8X8_MSG_BYTE_END_TRANSFER:
+            if (buffer) {
+                i2c_manager_lock();
+                if (i2c_manager_set_mux(MUX_ADDR_SENSORS, MUX_CH_OLED_MAIN) == ESP_OK) {
+                    uint8_t i2c_addr = u8x8_GetI2CAddress(u8x8) >> 1; 
+                    i2c_master_write_to_device(I2C_MASTER_NUM, i2c_addr, buffer, buf_idx, pdMS_TO_TICKS(100));
+                }
+                i2c_manager_unlock();
+            }
             break;
     }
     return 1;
