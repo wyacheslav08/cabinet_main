@@ -84,7 +84,7 @@ static hmi_event_type_t analyze_swipe(bool is_flipped) {
 
 static void mpr121_polling_task(void *pvParameters) {
     for (int i = 0; i < NUM_SENSORS; i++) {
-        if (mpr121_init(mux_channels[i], 10, 4) == ESP_OK) {
+        if (mpr121_init(mux_channels[i], MPR121_TOUCH_THRESH, MPR121_RELEASE_THRESH) == ESP_OK) {
             mpr121_online[i] = true;
         } else {
             ESP_LOGE(TAG, "Sensor MPR121 [%d] offline at boot", i);
@@ -190,7 +190,7 @@ static void mpr121_polling_task(void *pvParameters) {
             reconnect_timer = 0;
             for (int i = 0; i < NUM_SENSORS; i++) {
                 if (!mpr121_online[i]) {
-                    if (mpr121_init(mux_channels[i], 10, 4) == ESP_OK) {
+                    if (mpr121_init(mux_channels[i], MPR121_TOUCH_THRESH, MPR121_RELEASE_THRESH) == ESP_OK) {
                         mpr121_online[i] = true;
                         error_strikes[i] = 0; 
                         msg.type = EVENT_INFO_SENSOR_RESTORED;
