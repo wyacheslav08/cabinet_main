@@ -3,7 +3,7 @@
 #include "driver/i2c.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_rom_sys.h" 
+#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -16,12 +16,10 @@ static uint8_t consecutive_i2c_errors = 0;
 
 static void i2c_bus_clear_and_reinit(void) {
     ESP_LOGW(TAG, "I2C bus stuck! Initiating hardware bus clear...");
-
     i2c_driver_delete(I2C_MASTER_NUM);
 
     gpio_set_direction(I2C_MASTER_SDA_IO, GPIO_MODE_INPUT_OUTPUT_OD);
     gpio_set_direction(I2C_MASTER_SCL_IO, GPIO_MODE_INPUT_OUTPUT_OD);
-    
     gpio_set_level(I2C_MASTER_SDA_IO, 1);
     gpio_set_level(I2C_MASTER_SCL_IO, 1);
     esp_rom_delay_us(20);
@@ -57,7 +55,6 @@ static void i2c_bus_clear_and_reinit(void) {
     current_mux_channel[0] = 255;
     current_mux_channel[1] = 255;
     consecutive_i2c_errors = 0;
-
     ESP_LOGI(TAG, "I2C Bus Clear complete.");
 }
 
@@ -68,18 +65,28 @@ esp_err_t i2c_manager_set_mux(uint8_t mux_addr, uint8_t channel) {
     if (current_mux_channel[mux_idx] == channel) return ESP_OK; 
 
     uint8_t mux_cmd = (1 << channel);
-    esp_err_t err = i2c_master_write_to_device(I2C_MASTER_NUM, mux_addr, 
-                                               &mux_cmd, 1, 
-                                               pdMS_TO_TICKS(I2C_MASTER_TIMEOUT_MS));
+    
+    // В ТОЧНОСТИ КАК В ВАШЕМ ТЕСТОВОМ КОДЕ: Ручная сборка транзакции для MUX
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (mux_addr << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, mux_cmd, true);
+    i2c_master_stop(cmd);
+    
+    esp_err_t err = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, pdMS_TO_TICKS(100));
+    i2c_cmd_link_delete(cmd);
                                                
     if (err == ESP_OK) {
         current_mux_channel[mux_idx] = channel;
         consecutive_i2c_errors = 0; 
+        
+        // КРИТИЧНО: Даем мультиплексору 100 микросекунд на физическое переключение транзисторов!
+        esp_rom_delay_us(100); 
     } else {
         current_mux_channel[mux_idx] = 255; 
         consecutive_i2c_errors++;
-        ESP_LOGE(TAG, "MUX switch failed (%s). Strike %d/%d", 
-                 esp_err_to_name(err), consecutive_i2c_errors, MAX_I2C_ERRORS_BEFORE_RESET);
+        ESP_LOGE(TAG, "MUX switch failed (ADDR: 0x%02X, CH: %d, ERR: %s). Strike %d/%d", 
+                 mux_addr, channel, esp_err_to_name(err), consecutive_i2c_errors, MAX_I2C_ERRORS_BEFORE_RESET);
 
         if (consecutive_i2c_errors >= MAX_I2C_ERRORS_BEFORE_RESET) {
             i2c_bus_clear_and_reinit();
