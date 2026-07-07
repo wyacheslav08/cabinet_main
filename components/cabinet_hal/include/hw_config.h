@@ -15,17 +15,17 @@
 
 // [MUX 1] Мультиплексор климатических датчиков (SHT40)
 #define MUX_ADDR_SENSORS        0x70        // I2C адрес MUX 1
-#define MUX_CH_SHT_MAIN         0           // Канал 0: Основной (возле гитары)
-#define MUX_CH_SHT_HUMIDIFIER   1           // Канал 1: Внутри увлажнителя
-#define MUX_CH_SHT_DEHUMIDIFIER 2           // Канал 2: Внутри осушителя
-#define MUX_CH_SHT_EXTERNAL     3           // Канал 3: Внешний (комнатный)
+#define MUX_CH_SHT_MAIN         7           // Канал 0: Основной (возле гитары)
+#define MUX_CH_SHT_HUMIDIFIER   6           // Канал 1: Внутри увлажнителя
+#define MUX_CH_SHT_DEHUMIDIFIER 5           // Канал 2: Внутри осушителя
+#define MUX_CH_SHT_EXTERNAL     4           // Канал 3: Внешний (комнатный)
 
 // [MUX 2] Мультиплексор сенсорных панелей двери (MPR121)
 #define MUX_ADDR_TOUCH          0x71        // I2C адрес MUX 2 (пин A0 подтянут к VCC)
-#define MUX_CH_MPR_1            0           // Канал 0: Сенсорная панель 1
-#define MUX_CH_MPR_2            1           // Канал 1: Сенсорная панель 2
-#define MUX_CH_MPR_3            2           // Канал 2: Сенсорная панель 3
-#define MUX_CH_MPR_4            3           // Канал 3: Сенсорная панель 4
+#define MUX_CH_MPR_1            7           // Канал 0: Сенсорная панель 1
+#define MUX_CH_MPR_2            6           // Канал 1: Сенсорная панель 2
+#define MUX_CH_MPR_3            5           // Канал 2: Сенсорная панель 3
+#define MUX_CH_MPR_4            4           // Канал 3: Сенсорная панель 4
 
 // --- АДРЕСА И КОМАНДЫ ДАТЧИКОВ ---
 #define SHT40_I2C_ADDR          0x44        // Адрес SHT40
