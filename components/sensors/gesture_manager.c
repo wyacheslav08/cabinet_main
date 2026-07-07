@@ -87,6 +87,9 @@ static hmi_event_type_t analyze_swipe(bool is_flipped) {
 }
 
 static void mpr121_polling_task(void *pvParameters) {
+    // [ИСПРАВЛЕНИЕ 2]: Даем шине I2C и чипам MPR121 200 мс на аппаратную загрузку
+    ESP_LOGI(TAG, "Waiting 200ms for hardware Power-On Reset...");
+    vTaskDelay(pdMS_TO_TICKS(200));
     for (int i = 0; i < NUM_SENSORS; i++) {
         if (mpr121_init(mux_channels[i], MPR121_TOUCH_THRESH, MPR121_RELEASE_THRESH) == ESP_OK) {
             mpr121_online[i] = true;
@@ -204,12 +207,11 @@ static void mpr121_polling_task(void *pvParameters) {
     }
 }
 
-// [КРИТИЧНО] Реализация функции, которую ищет линковщик!
 esp_err_t gesture_manager_init(void) {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_ORIENTATION_SENSOR),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // <--- [ИСПРАВЛЕНИЕ 1]: Отключаем внутреннюю подтяжку!
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE
     };
@@ -228,7 +230,7 @@ esp_err_t gesture_manager_init(void) {
         NULL, 
         6, 
         NULL, 
-        1 // Core 1
+        1 
     );
     
     if (res != pdPASS) {

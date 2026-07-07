@@ -14,6 +14,9 @@ extern display_handle_t g_display_handle;
 static void climate_control_task(void *pvParameters) {
     ESP_LOGI(TAG, "Climate Control Task started on Core 1");
 
+    // [ИСПРАВЛЕНИЕ 3]: Ждем 500 мс, чтобы MPR121 успели инициализироваться первыми
+    vTaskDelay(pdMS_TO_TICKS(500));
+
     // Инициализация шины и датчиков SHT40
     if (sht40_driver_init() != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize SHT40 sensors. Halting climate control.");
