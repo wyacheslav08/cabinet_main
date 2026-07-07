@@ -4,8 +4,8 @@ idf_component_register(
     REQUIRES 
         ui 
         cabinet_hal 
-        sensors       # Добавлено для gesture_manager.h
-        logic         # Добавлено для climate_control.h
+        sensors       # <--- КРИТИЧНО ВАЖНО: main должен видеть сенсоры
+        logic         
         nvs_flash 
         freertos 
         esp_system 

@@ -1,3 +1,8 @@
+/**
+ * @file gesture_manager.c
+ * @brief Реализация менеджера опроса тач-панелей и распознавания жестов.
+ */
+
 #include "gesture_manager.h"
 #include "mpr121_driver.h"
 #include "hw_config.h"
@@ -17,6 +22,8 @@ static const uint8_t mux_channels[] = {MUX_CH_MPR_1, MUX_CH_MPR_2, MUX_CH_MPR_3,
 
 static bool mpr121_online[NUM_SENSORS] = {false};
 static volatile bool lock_button_state = false;
+
+// [КРИТИЧНО] Определение глобальной переменной (без слова static!)
 QueueHandle_t hmi_event_queue = NULL;
 
 static uint8_t swipe_buffer[MAX_SWIPE_LEN];
@@ -26,7 +33,6 @@ bool gesture_is_lock_pressed(void) {
     return lock_button_state;
 }
 
-// Вспомогательная функция для безопасной отправки событий
 static void send_hmi_event(hmi_msg_t *msg) {
     if (hmi_event_queue != NULL) {
         if (xQueueSend(hmi_event_queue, msg, pdMS_TO_TICKS(10)) != pdPASS) {
@@ -39,11 +45,9 @@ static uint8_t get_global_id(uint8_t mux_index, uint8_t mpr_pin) {
     return (mux_index * 12) + mpr_pin + 1;
 }
 
-// Оптимизация: is_flipped передается аргументом, чтобы не читать GPIO в цикле
 static void get_xy_from_id(uint8_t id, int *x, int *y, bool is_flipped) {
     *x = (id - 1) % 3;
     *y = (id - 1) / 3;
-
     if (is_flipped) {
         *x = 2 - *x;
         *y = 15 - *y;
@@ -55,7 +59,7 @@ static bool is_door_sensor(uint8_t id) {
 }
 
 static hmi_event_type_t analyze_swipe(bool is_flipped) {
-    if (swipe_len < MIN_SWIPE_LEN) return EVENT_NONE;
+    if (swipe_len < MIN_SWIPE_LEN) return EVENT_TAP; // Если касание короткое — это ТАП
 
     int x_first, y_first, x_last, y_last;
     get_xy_from_id(swipe_buffer[0], &x_first, &y_first, is_flipped);
@@ -79,7 +83,7 @@ static hmi_event_type_t analyze_swipe(bool is_flipped) {
         if (y_last > y_first) return EVENT_SWIPE_DOWN;
         if (y_last < y_first) return EVENT_SWIPE_UP;
     }
-    return EVENT_NONE;
+    return EVENT_TAP;
 }
 
 static void mpr121_polling_task(void *pvParameters) {
@@ -94,22 +98,18 @@ static void mpr121_polling_task(void *pvParameters) {
     uint16_t current_status = 0;
     uint16_t last_status[NUM_SENSORS] = {0};
     uint8_t error_strikes[NUM_SENSORS] = {0}; 
-
     int release_cycles = 0; 
     int hold_door_cycles = 0;
     bool ignore_next_release = false; 
     int reconnect_timer = 0;
     hmi_msg_t msg;
 
-    // Инициализация для жесткого реал-тайм цикла
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(POLL_RATE_MS);
 
     while (1) {
         int total_active_touches = 0;
         bool only_door_sensors_touched = true;
-        
-        // Читаем GPIO один раз за цикл опроса (Оптимизация)
         bool is_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 0);
 
         for (int i = 0; i < NUM_SENSORS; i++) {
@@ -117,7 +117,6 @@ static void mpr121_polling_task(void *pvParameters) {
 
             if (mpr121_get_touched(mux_channels[i], &current_status) == ESP_OK) {
                 error_strikes[i] = 0; 
-                
                 for (int bit = 0; bit < 12; bit++) {
                     if (current_status & (1 << bit)) {
                         total_active_touches++;
@@ -145,7 +144,7 @@ static void mpr121_polling_task(void *pvParameters) {
                 error_strikes[i]++;
                 if (error_strikes[i] >= 3) {
                     mpr121_online[i] = false;
-                    swipe_len = 0; // СБРОС стейт-машины жестов при отвале сенсора
+                    swipe_len = 0; 
                     msg.type = EVENT_ERROR_SENSOR_OFFLINE;
                     msg.sensor_index = i;
                     send_hmi_event(&msg);
@@ -201,11 +200,11 @@ static void mpr121_polling_task(void *pvParameters) {
             }
         }
         
-        // Гарантируем цикл ровно 50 мс, независимо от таймаутов I2C
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
+// [КРИТИЧНО] Реализация функции, которую ищет линковщик!
 esp_err_t gesture_manager_init(void) {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_ORIENTATION_SENSOR),
@@ -222,12 +221,22 @@ esp_err_t gesture_manager_init(void) {
         return ESP_ERR_NO_MEM;
     }
 
-    BaseType_t res = xTaskCreate(mpr121_polling_task, "mpr121_task", 4096, NULL, 6, NULL);
+    BaseType_t res = xTaskCreatePinnedToCore(
+        mpr121_polling_task, 
+        "mpr121_task", 
+        4096, 
+        NULL, 
+        6, 
+        NULL, 
+        1 // Core 1
+    );
+    
     if (res != pdPASS) {
         ESP_LOGE(TAG, "Failed to create MPR polling task");
         vQueueDelete(hmi_event_queue);
         return ESP_ERR_NO_MEM;
     }
 
+    ESP_LOGI(TAG, "Gesture Manager initialized successfully");
     return ESP_OK;
 }

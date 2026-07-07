@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "esp_err.h"
 #include "lvgl.h"
+#include "gesture_manager.h" // Для hmi_event_type_t
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +44,17 @@ typedef struct {
     bool is_ble_connected;
     bool is_locked;
 } ui_status_data_t;
+
+/**
+ * @brief Главная функция обработки жестов внутри UI.
+ * Реализует паттерн State Machine (Меню -> Настройки -> Сохранение).
+ * 
+ * @param handle Хэндл дисплея.
+ * @param event Тип жеста из очереди.
+ * @return ESP_OK при успехе.
+ */
+esp_err_t display_manager_process_gesture(display_handle_t handle, hmi_event_type_t event);
+
 
 /**
  * @brief Инициализирует дисплей ST7735, LVGL и строит рабочий интерфейс.

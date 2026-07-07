@@ -1,191 +1,153 @@
-#include "sht40_driver.h"
+/**
+ * @file mpr121_driver.c
+ * @brief Драйвер 12-канального емкостного сенсора MPR121.
+ * @note Реализует потокобезопасную работу через I2C мультиплексор PCA9548A.
+ */
+
+#include "mpr121_driver.h"
 #include "hw_config.h"
 #include "i2c_manager.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "SHT40_DRV";
-
-// Таблица соответствия ID датчика и канала мультиплексора PCA9548A
-static const uint8_t SENSOR_MUX_CHANNELS[SHT40_MAX_SENSORS] = {
-    [SHT40_MAIN]         = MUX_CH_SHT_MAIN,
-    [SHT40_HUMIDIFIER]   = MUX_CH_SHT_HUMIDIFIER,
-    [SHT40_DEHUMIDIFIER] = MUX_CH_SHT_DEHUMIDIFIER,
-    [SHT40_EXTERNAL]     = MUX_CH_SHT_EXTERNAL
-};
-
-// Названия датчиков для удобного логирования
-static const char* SENSOR_NAMES[SHT40_MAX_SENSORS] = {
-    "MAIN (Guitar)",
-    "HUMIDIFIER",
-    "DEHUMIDIFIER",
-    "EXTERNAL (Room)"
-};
+static const char *TAG = "MPR121";
 
 // =========================================================================
-// ВНУТРЕННИЕ МАТЕМАТИЧЕСКИЕ ФУНКЦИИ (STATIC)
+// РЕГИСТРЫ MPR121
+// =========================================================================
+#define MPR121_TOUCH_STATUS_L   0x00
+#define MPR121_ELE0_TOUCH_TH    0x41
+#define MPR121_ELE0_REL_TH      0x42
+#define MPR121_MHD_R            0x2B
+#define MPR121_NHD_R            0x2C
+#define MPR121_NCL_R            0x2D
+#define MPR121_FDL_R            0x2E
+#define MPR121_MHD_F            0x2F
+#define MPR121_NHD_F            0x30
+#define MPR121_NCL_F            0x31
+#define MPR121_FDL_F            0x32
+#define MPR121_ELE_CFG          0x5E
+#define MPR121_AFE_CFG          0x5C
+#define MPR121_FILTER_CFG       0x5D
+#define MPR121_AUTO_CFG_0       0x7B
+#define MPR121_AUTO_CFG_1       0x7C
+#define MPR121_USL              0x7D
+#define MPR121_LSL              0x7E
+#define MPR121_TL               0x7F
+#define MPR121_SOFT_RESET       0x80
+
+// =========================================================================
+// ВНУТРЕННИЕ ФУНКЦИИ (Без мьютекса, вызываются только когда шина захвачена)
 // =========================================================================
 
 /**
- * @brief Вычисление контрольной суммы CRC-8 по стандарту Sensirion.
- * Полином: 0x31 (x^8 + x^5 + x^4 + 1), Инициализация: 0xFF.
+ * @brief Запись значения в регистр MPR121.
+ * ВАЖНО: Вызывать только между i2c_manager_lock() и i2c_manager_unlock()
  */
-static uint8_t calculate_crc8(const uint8_t *data, int len) {
-    uint8_t crc = 0xFF;
-    for (int i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (int bit = 8; bit > 0; --bit) {
-            if (crc & 0x80) {
-                crc = (crc << 1) ^ 0x31;
-            } else {
-                crc = (crc << 1);
-            }
-        }
-    }
-    return crc;
-}
-
-/**
- * @brief Преобразование сырых 16-битных данных АЦП в физические величины.
- * Формулы из официального даташита Sensirion SHT40 (раздел 4.6).
- */
-static void convert_raw_data(uint16_t raw_temp, uint16_t raw_hum, float *out_temp, float *out_hum) {
-    // T = -45 + 175 * (S_T / 65535)
-    *out_temp = -45.0f + 175.0f * ((float)raw_temp / 65535.0f);
-    
-    // RH = -6 + 125 * (S_RH / 65535)
-    float rh = -6.0f + 125.0f * ((float)raw_hum / 65535.0f);
-    
-    // Ограничение диапазона влажности физическими пределами 0..100%
-    if (rh < 0.0f) rh = 0.0f;
-    if (rh > 100.0f) rh = 100.0f;
-    *out_hum = rh;
+static esp_err_t write_reg_nolock(uint8_t reg, uint8_t val) {
+    uint8_t data[2] = {reg, val};
+    return i2c_master_write_to_device(I2C_MASTER_NUM, MPR121_I2C_ADDRESS, data, 2, pdMS_TO_TICKS(50));
 }
 
 // =========================================================================
-// ПУБЛИЧНЫЙ API ДРАЙВЕРА
+// ПУБЛИЧНЫЙ API
 // =========================================================================
 
-esp_err_t sht40_driver_init(void) {
-    ESP_LOGI(TAG, "Initializing 4x SHT40 climate sensors...");
-    
-    int active_sensors = 0;
+esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_thresh, uint8_t release_thresh) {
+    esp_err_t err;
 
-    for (int i = 0; i < SHT40_MAX_SENSORS; i++) {
-        i2c_manager_lock();
-        
-        // 1. Переключаем мультиплексор на канал текущего датчика
-        esp_err_t err = i2c_manager_set_mux(MUX_ADDR_SENSORS, SENSOR_MUX_CHANNELS[i]);
-        if (err == ESP_OK) {
-            // 2. Проверяем присутствие чипа SHT40 на шине (отправка адреса без данных)
-            i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-            i2c_master_start(cmd);
-            i2c_master_write_byte(cmd, (SHT40_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
-            i2c_master_stop(cmd);
-            
-            err = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, pdMS_TO_TICKS(50));
-            i2c_cmd_link_delete(cmd);
-            
-            if (err == ESP_OK) {
-                ESP_LOGI(TAG, "Sensor [%d] %s -> DETECTED on MUX channel %d", i, SENSOR_NAMES[i], SENSOR_MUX_CHANNELS[i]);
-                active_sensors++;
-            } else {
-                ESP_LOGW(TAG, "Sensor [%d] %s -> NOT RESPONDING", i, SENSOR_NAMES[i]);
-            }
-        }
-        
-        i2c_manager_unlock();
-    }
-
-    // Критическое требование: основной датчик возле гитары ОБЯЗАН работать!
-    if (active_sensors == 0) {
-        ESP_LOGE(TAG, "CRITICAL: No SHT40 sensors detected! Check wiring and PCA9548A.");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "SHT40 Driver initialization complete. Active sensors: %d/%d", active_sensors, SHT40_MAX_SENSORS);
-    return ESP_OK;
-}
-
-esp_err_t sht40_read_sensor(sht40_sensor_id_t sensor_id, sht40_reading_t *out_reading) {
-    if (sensor_id >= SHT40_MAX_SENSORS || out_reading == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    out_reading->is_valid = false;
-    uint8_t cmd_meas = SHT40_CMD_MEAS_HIGH_PREC;
-
-    // --- ЭТАП 1: Отправка команды на измерение ---
+    // 1. ПРОГРАММНЫЙ СБРОС (Soft Reset)
     i2c_manager_lock();
-    esp_err_t err = i2c_manager_set_mux(MUX_ADDR_SENSORS, SENSOR_MUX_CHANNELS[sensor_id]);
-    if (err == ESP_OK) {
-        err = i2c_master_write_to_device(I2C_MASTER_NUM, SHT40_I2C_ADDR, 
-                                         &cmd_meas, 1, 
-                                         pdMS_TO_TICKS(I2C_MASTER_TIMEOUT_MS));
-    }
-    i2c_manager_unlock(); // ВАЖНО: Освобождаем шину I2C для других задач!
-
-    if (err != ESP_OK) {
-        ESP_LOGD(TAG, "Failed to send measure cmd to sensor [%s]", SENSOR_NAMES[sensor_id]);
-        return err;
-    }
-
-    // --- ЭТАП 2: Ожидание замера АЦП (Высокая точность длится макс. 8.2 мс) ---
-    // В это время процессор и шина I2C свободны для опроса тач-панели или экрана!
-    vTaskDelay(pdMS_TO_TICKS(10));
-
-    // --- ЭТАП 3: Чтение 6 байт результата (T_MSB, T_LSB, T_CRC, RH_MSB, RH_LSB, RH_CRC) ---
-    uint8_t rx_buf[6] = {0};
-    
-    i2c_manager_lock();
-    // Повторно подтверждаем канал мультиплексора (вдруг другая задача его переключила за эти 10 мс)
-    err = i2c_manager_set_mux(MUX_ADDR_SENSORS, SENSOR_MUX_CHANNELS[sensor_id]);
-    if (err == ESP_OK) {
-        err = i2c_master_read_from_device(I2C_MASTER_NUM, SHT40_I2C_ADDR, 
-                                          rx_buf, sizeof(rx_buf), 
-                                          pdMS_TO_TICKS(I2C_MASTER_TIMEOUT_MS));
+    if (i2c_manager_set_mux(MUX_ADDR_TOUCH, mux_channel) == ESP_OK) {
+        write_reg_nolock(MPR121_SOFT_RESET, 0x63);
     }
     i2c_manager_unlock();
 
+    // Даем чипу 2 мс на перезагрузку (В это время I2C шина свободна для дисплея/климата)
+    vTaskDelay(pdMS_TO_TICKS(2));
+
+    // 2. ОСНОВНАЯ КОНФИГУРАЦИЯ
+    i2c_manager_lock();
+    err = i2c_manager_set_mux(MUX_ADDR_TOUCH, mux_channel);
     if (err != ESP_OK) {
-        ESP_LOGD(TAG, "Failed to read data bytes from sensor [%s]", SENSOR_NAMES[sensor_id]);
+        i2c_manager_unlock();
+        ESP_LOGE(TAG, "Failed to switch MUX to channel %d for init", mux_channel);
         return err;
     }
 
-    // --- ЭТАП 4: Валидация контрольных сумм CRC-8 ---
-    uint8_t temp_crc = calculate_crc8(&rx_buf[0], 2);
-    uint8_t hum_crc  = calculate_crc8(&rx_buf[3], 2);
+    // Перевод в режим Stop (Необходимо для изменения настроек)
+    write_reg_nolock(MPR121_ELE_CFG, 0x00);
 
-    if (temp_crc != rx_buf[2] || hum_crc != rx_buf[5]) {
-        ESP_LOGW(TAG, "CRC mismatch on sensor [%s]! (Calc T:0x%02X/Rx:0x%02X, Calc RH:0x%02X/Rx:0x%02X)", 
-                 SENSOR_NAMES[sensor_id], temp_crc, rx_buf[2], hum_crc, rx_buf[5]);
-        return ESP_ERR_INVALID_CRC;
+    // Настройка порогов срабатывания для всех 12 электродов
+    for (int i = 0; i < 12; i++) {
+        write_reg_nolock(MPR121_ELE0_TOUCH_TH + (i * 2), touch_thresh);
+        write_reg_nolock(MPR121_ELE0_REL_TH + (i * 2), release_thresh);
     }
 
-    // --- ЭТАП 5: Конвертация в физические величины ---
-    uint16_t raw_temp = (rx_buf[0] << 8) | rx_buf[1];
-    uint16_t raw_hum  = (rx_buf[3] << 8) | rx_buf[4];
+    // Настройка фильтров базовой линии (Baseline Tracking)
+    write_reg_nolock(MPR121_MHD_R, 0x01);
+    write_reg_nolock(MPR121_NHD_R, 0x01);
+    write_reg_nolock(MPR121_NCL_R, 0x00);
+    write_reg_nolock(MPR121_FDL_R, 0x00);
 
-    convert_raw_data(raw_temp, raw_hum, &out_reading->temperature, &out_reading->humidity);
-    out_reading->is_valid = true;
+    write_reg_nolock(MPR121_MHD_F, 0x01);
+    write_reg_nolock(MPR121_NHD_F, 0x01);
+    write_reg_nolock(MPR121_NCL_F, 0xFF);
+    write_reg_nolock(MPR121_FDL_F, 0x02);
 
+    // Настройка токов и времени заряда (Берется из mpr121_driver.h)
+    write_reg_nolock(MPR121_AFE_CFG, MPR121_MANUAL_CDC);
+    write_reg_nolock(MPR121_FILTER_CFG, MPR121_MANUAL_CDT);
+
+    // Настройка Авто-конфигурации
+    if (MPR121_USE_AUTO_CONFIG) {
+        write_reg_nolock(MPR121_AUTO_CFG_0, 0x0B); 
+        write_reg_nolock(MPR121_AUTO_CFG_1, 0x00);
+        // Лимиты для 3.3V
+        write_reg_nolock(MPR121_USL, 0xC8); 
+        write_reg_nolock(MPR121_LSL, 0x82); 
+        write_reg_nolock(MPR121_TL,  0xB4); 
+    }
+
+    // Включение чипа и электродов (Запуск Run Mode)
+    // 0x0C = Включены все 12 электродов.
+    // Если MPR121_BASELINE_TRACKING = 0, добавляем биты отключения трекинга (0xC0)
+    uint8_t ele_cfg_val = 0x0C;
+    if (!MPR121_BASELINE_TRACKING) {
+        ele_cfg_val |= 0xC0; 
+    }
+    write_reg_nolock(MPR121_ELE_CFG, ele_cfg_val);
+
+    i2c_manager_unlock();
+    
+    ESP_LOGD(TAG, "MPR121 on MUX %d initialized", mux_channel);
     return ESP_OK;
 }
 
-esp_err_t sht40_read_all(cabinet_climate_data_t *out_data) {
-    if (out_data == NULL) return ESP_ERR_INVALID_ARG;
+esp_err_t mpr121_get_touched(uint8_t mux_channel, uint16_t *touched_mask) {
+    if (touched_mask == NULL) return ESP_ERR_INVALID_ARG;
 
-    for (int i = 0; i < SHT40_MAX_SENSORS; i++) {
-        esp_err_t err = sht40_read_sensor((sht40_sensor_id_t)i, &out_data->sensors[i]);
-        if (err != ESP_OK) {
-            // Если датчик не ответил, помечаем его данные как невалидные, но продолжаем опрос остальных
-            out_data->sensors[i].is_valid = false;
+    i2c_manager_lock();
+    
+    // Переключаем мультиплексор на сенсорную панель
+    esp_err_t err = i2c_manager_set_mux(MUX_ADDR_TOUCH, mux_channel);
+    if (err == ESP_OK) {
+        uint8_t reg = MPR121_TOUCH_STATUS_L;
+        uint8_t data[2] = {0, 0};
+        
+        // Читаем 2 байта (статус 12 электродов) за одну I2C транзакцию
+        err = i2c_master_write_read_device(I2C_MASTER_NUM, MPR121_I2C_ADDRESS, 
+                                           &reg, 1, 
+                                           data, 2, 
+                                           pdMS_TO_TICKS(50));
+        if (err == ESP_OK) {
+            *touched_mask = (data[1] << 8) | data[0];
+            *touched_mask &= 0x0FFF; // Отсекаем старшие 4 бита (они не используются)
         }
     }
     
-    out_data->timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-    return ESP_OK;
+    i2c_manager_unlock();
+    return err;
 }
