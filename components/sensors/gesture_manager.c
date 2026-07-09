@@ -4,6 +4,7 @@
 #include "driver/gpio.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "settings_manager.h"
 
 static const char *TAG = "GESTURE_MGR";
 
@@ -109,8 +110,11 @@ static void mpr121_polling_task(void *pvParameters) {
         int total_active_touches = 0;
         bool only_door_sensors_touched = true;
         
-        // Читаем GPIO один раз за цикл опроса (Оптимизация)
-        bool is_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 0);
+        // Внутри mpr121_polling_task ЗАМЕНИТЕ чтение GPIO 36 на чтение из памяти:
+        // Читаем настройку из памяти, а не с пина
+        settings_lock();
+        bool is_flipped = (sys_settings.touchRotationIndex == 1);
+        settings_unlock();
 
         for (int i = 0; i < NUM_SENSORS; i++) {
             if (!mpr121_online[i]) continue; 

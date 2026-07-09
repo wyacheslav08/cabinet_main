@@ -56,6 +56,7 @@ typedef struct {
     uint32_t dspPingDurationMs;    // Длительность удара по деке
     float dspDryResonanceHz;       // Эталонная частота сухой гитары
     float dspWetResonanceHz;       // Эталонная частота влажной гитары
+    uint8_t touchRotationIndex;    //  0 = Норма, 1 = Инверсия (180°)
 
 } cabinet_settings_t;
 

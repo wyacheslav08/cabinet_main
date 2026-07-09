@@ -220,19 +220,26 @@ esp_err_t display_manager_init(display_handle_t *out_handle) {
     return ESP_OK;
 }
 
+// В функции display_manager_set_rotation добавьте вызов перестроения:
 esp_err_t display_manager_set_rotation(display_handle_t handle, uint8_t rotation_idx) {
     if (!handle || !handle->lv_disp) return ESP_ERR_INVALID_ARG;
 
     lv_display_rotation_t lv_rot;
+    bool is_landscape = false; // Флаг для верстки
+
     switch (rotation_idx) {
-        case 1: lv_rot = LV_DISPLAY_ROTATION_90; break;
-        case 2: lv_rot = LV_DISPLAY_ROTATION_180; break;
-        case 3: lv_rot = LV_DISPLAY_ROTATION_270; break;
-        default: lv_rot = LV_DISPLAY_ROTATION_0; break;
+        case 1: lv_rot = LV_DISPLAY_ROTATION_90;  is_landscape = true; break;
+        case 2: lv_rot = LV_DISPLAY_ROTATION_180; is_landscape = false; break;
+        case 3: lv_rot = LV_DISPLAY_ROTATION_270; is_landscape = true; break;
+        default: lv_rot = LV_DISPLAY_ROTATION_0;  is_landscape = false; break;
     }
 
     if (lvgl_port_lock(portMAX_DELAY)) {
         lv_display_set_rotation(handle->lv_disp, lv_rot);
+        
+        // ВЫЗЫВАЕМ ФУНКЦИЮ ПЕРЕСТРОЕНИЯ ЭЛЕМЕНТОВ
+        ui_screens_update_layout(is_landscape);
+        
         lvgl_port_unlock();
     }
     ESP_LOGI(TAG, "Screen rotation applied: %d", rotation_idx);
