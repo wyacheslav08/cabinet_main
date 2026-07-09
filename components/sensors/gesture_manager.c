@@ -103,7 +103,7 @@ static void mpr121_polling_task(void *pvParameters) {
 
     // Инициализация для жесткого реал-тайм цикла
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(POLL_RATE_MS);
+    const TickType_t xFrequency = pdMS_TO_TICKS(POLL_RATE_MS);// До цикла while(1)
 
     while (1) {
         int total_active_touches = 0;

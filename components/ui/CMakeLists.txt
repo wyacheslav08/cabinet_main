@@ -12,5 +12,5 @@ idf_component_register(
     INCLUDE_DIRS "include" "."
     
     REQUIRES lvgl esp_timer driver sensors
-    PRIV_REQUIRES esp_lcd esp_lvgl_port esp_lcd_st7735-main cabinet_hal log storage
+    PRIV_REQUIRES esp_lcd esp_lvgl_port esp_lcd_st7735-main cabinet_hal log storage logic dsp_audio
 )

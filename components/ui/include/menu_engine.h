@@ -15,6 +15,9 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event);
 // Получить текущее состояние (для понимания, на главном мы экране или нет)
 bool menu_engine_is_on_main_screen(void);
 
+// Принудительный сброс на главный экран (для таймера бездействия)
+void menu_engine_force_main_screen(void);
+
 #ifdef __cplusplus
 }
 #endif

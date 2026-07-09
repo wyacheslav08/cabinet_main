@@ -57,8 +57,8 @@
 #define PIN_HX711_DT            35          // Данные с АЦП (Input-Only пин)
 
 // --- 6. ДАТЧИКИ БЕЗОПАСНОСТИ И ПОЛОЖЕНИЯ (Входы с внешней подтяжкой 10кОм) ---
-#define PIN_DOOR_SENSOR         34          // 0 - закрыто, 1 - открыто (Input-Only)
-#define PIN_ORIENTATION_SENSOR  36          // 0 - перевернуто, 1 - норма (Input-Only VP)
+#define PIN_DOOR_SENSOR         36          // 0 - закрыто, 1 - открыто (Input-Only)
+#define PIN_ORIENTATION_SENSOR  34          // 0 - перевернуто, 1 - норма (Input-Only VP)
 
 // --- 7. СВЯЗЬ С GATEWAY (UART2 Bridge для BLE/Wi-Fi шлюза) ---
 #define COMM_UART_NUM           UART_NUM_2

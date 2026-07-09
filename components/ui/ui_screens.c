@@ -41,6 +41,8 @@ void ui_screens_init(void) {
     lv_obj_t* screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
 
+    // (Внимание: Функция ui_screens_init() - секция 1. ГЛАВНЫЙ ЭКРАН)
+
     // =========================================================================
     // 1. ГЛАВНЫЙ ЭКРАН (Крупная типографика по ТЗ)
     // =========================================================================
@@ -50,43 +52,47 @@ void ui_screens_init(void) {
     lv_obj_set_style_border_width(cont_main, 0, 0);
     lv_obj_remove_flag(cont_main, LV_OBJ_FLAG_SCROLLABLE);
 
-    // --- Влажность (Слева внизу) ---
+    // --- ВЛАЖНОСТЬ (Слева внизу) ---
     lbl_hum_int = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_int, &font_cyrillic_48, 0);
     lv_obj_set_style_text_color(lbl_hum_int, lv_color_hex(0x00FFFF), 0);
     lv_label_set_text(lbl_hum_int, "55");
-    lv_obj_align(lbl_hum_int, LV_ALIGN_BOTTOM_LEFT, 4, -15);
+    lv_obj_align(lbl_hum_int, LV_ALIGN_BOTTOM_LEFT, 2, -5); // Максимально вниз и влево
 
     lbl_hum_frac = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_frac, &font_cyrillic_20, 0);
     lv_obj_set_style_text_color(lbl_hum_frac, lv_color_hex(0x00AAAA), 0);
-    lv_label_set_text(lbl_hum_frac, ".00");
-    lv_obj_align_to(lbl_hum_frac, lbl_hum_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -6);
+    lv_label_set_text(lbl_hum_frac, ".05");
+    // Выравниваем дробную часть справа от целой, по нижнему краю
+    lv_obj_align_to(lbl_hum_frac, lbl_hum_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
 
     lbl_hum_unit = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_unit, &font_cyrillic_20, 0);
     lv_obj_set_style_text_color(lbl_hum_unit, lv_color_hex(0xAAAAAA), 0);
     lv_label_set_text(lbl_hum_unit, "H%");
-    lv_obj_align_to(lbl_hum_unit, lbl_hum_int, LV_ALIGN_OUT_RIGHT_TOP, 2, 8);
+    // Размещаем H% над дробной частью, выравнивая по верхнему краю целой цифры (48 шрифта)
+    lv_obj_align_to(lbl_hum_unit, lbl_hum_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
 
-    // --- Температура (Справа внизу) ---
+    // --- ТЕМПЕРАТУРА (Справа внизу) ---
     lbl_temp_int = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_int, &font_cyrillic_48, 0);
     lv_obj_set_style_text_color(lbl_temp_int, lv_color_hex(0xFF8800), 0);
     lv_label_set_text(lbl_temp_int, "25");
-    lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -32, -15);
+    // Отступаем от правого края, чтобы влезла дробная часть и символ
+    lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -38, -5);
 
     lbl_temp_frac = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_frac, &font_cyrillic_20, 0);
     lv_obj_set_style_text_color(lbl_temp_frac, lv_color_hex(0xAA5500), 0);
-    lv_label_set_text(lbl_temp_frac, ".00");
-    lv_obj_align_to(lbl_temp_frac, lbl_temp_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -6);
+    lv_label_set_text(lbl_temp_frac, ".03");
+    lv_obj_align_to(lbl_temp_frac, lbl_temp_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
 
     lbl_temp_unit = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_unit, &font_cyrillic_20, 0);
     lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0xAAAAAA), 0);
     lv_label_set_text(lbl_temp_unit, "C°");
-    lv_obj_align_to(lbl_temp_unit, lbl_temp_int, LV_ALIGN_OUT_RIGHT_TOP, 2, 8);
+    // Размещаем C° аналогично H%
+    lv_obj_align_to(lbl_temp_unit, lbl_temp_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
 
     // =========================================================================
     // 2. ЭКРАН МЕНЮ
@@ -126,12 +132,13 @@ void ui_screens_init(void) {
     lv_obj_set_style_pad_all(list_cont, 2, 0);
     lv_obj_set_layout(list_cont, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(list_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(list_cont, 2, 0);      // Убирает огромные щели между пунктами меню!
 
     for (int i = 0; i < 5; i++) {
         menu_items[i] = lv_label_create(list_cont);
         lv_obj_set_width(menu_items[i], lv_pct(95));
         lv_obj_set_style_text_font(menu_items[i], &font_cyrillic_12, 0);
-        lv_obj_set_style_pad_all(menu_items[i], 6, 0);
+        lv_obj_set_style_pad_all(menu_items[i], 4, 0);
         lv_obj_set_style_radius(menu_items[i], 3, 0);
         lv_label_set_long_mode(menu_items[i], LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
     }

@@ -49,6 +49,7 @@ esp_err_t settings_reset_to_defaults(void) {
     sys_settings.humidityHysteresis = 1.0f;
     sys_settings.resourceLowFaultThreshold = 2;
     sys_settings.resourceEmptyFaultThreshold = 4;
+    sys_settings.screenRotationIndex = 0; // По умолчанию 0 градусов
 
     // Калибровка и Статистика (нули)
     // ... memset уже занулил их ...

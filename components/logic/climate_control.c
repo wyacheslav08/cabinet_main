@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "uart_link.h"
 
 static const char *TAG = "CLIMATE_CTRL";
 
@@ -62,6 +63,15 @@ static void climate_control_task(void *pvParameters) {
         if (g_display_handle != NULL) {
             display_manager_update_status(g_display_handle, &ui_data);
         }
+
+        // 4. Отправка телеметрии на Gateway (BLE)
+        uart_link_send_telemetry(
+            ui_data.temperature, 
+            ui_data.humidity, 
+            ui_data.weight_grams, 
+            ui_data.is_locked, 
+            ui_data.is_guitar_present
+        );
 
         // Цикл ПИД-регулятора и опроса датчиков — 2 секунды
         vTaskDelay(pdMS_TO_TICKS(2000));

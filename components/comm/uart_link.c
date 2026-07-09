@@ -111,3 +111,13 @@ esp_err_t uart_link_send(const uint8_t *data, size_t len) {
     int written = uart_write_bytes(COMM_UART_NUM, (const char*)data, len);
     return (written == len) ? ESP_OK : ESP_FAIL;
 }
+
+esp_err_t uart_link_send_telemetry(float temp, float hum, int32_t weight_g, bool is_locked, bool is_guitar_present) {
+    // Формируем стандартизированный пакет (например, ключ-значение)
+    char buf[128];
+    int len = snprintf(buf, sizeof(buf), "BLE_TX:T=%.2f,H=%.2f,W=%ld,L=%d,G=%d\r\n", 
+                       temp, hum, weight_g, is_locked ? 1 : 0, is_guitar_present ? 1 : 0);
+                       
+    ESP_LOGD(TAG, "Sending telemetry to Gateway: %s", buf);
+    return uart_link_send((const uint8_t*)buf, len);
+}

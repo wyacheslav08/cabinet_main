@@ -46,7 +46,9 @@ typedef struct {
     uint32_t wdtResetCount;
     uint32_t autoRebootCounter;
     uint32_t totalRebootCounter;
-    uint32_t lastRebootTimestamp;
+    
+    // --- Настройки интерфейса ---
+    uint8_t screenRotationIndex;   // 0 = 0°, 1 = 90°, 2 = 180°, 3 = 270°
 
     // --- НОВОЕ: Настройки Железа (HW_TUNE) ---
     float hx711ScaleFactor;        // Коэффициент весов
