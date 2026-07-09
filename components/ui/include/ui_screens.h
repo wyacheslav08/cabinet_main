@@ -24,7 +24,7 @@ void ui_screens_update_layout(bool is_landscape);
 // Обновление телеметрии на Главном экране и в Статус-баре
 void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g);
 
-// ИСПРАВЛЕНО: Обновление строк меню (теперь всего 3 аргумента)
+// Обновление строк меню (теперь всего 3 аргумента)
 void ui_screens_render_menu(const char* items[5], int count, int selected_idx);
 
 #ifdef __cplusplus

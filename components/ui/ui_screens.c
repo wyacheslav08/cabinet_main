@@ -20,7 +20,7 @@ LV_FONT_DECLARE(font_cyrillic_48);
 
 static lv_obj_t* cont_main = NULL;
 static lv_obj_t* cont_menu = NULL;
-static lv_obj_t* cont_edit = NULL; // НОВЫЙ ЭКРАН РЕДАКТИРОВАНИЯ
+static lv_obj_t* cont_edit = NULL;
 
 // Главный экран
 static lv_obj_t* lbl_hum_int;
@@ -216,28 +216,57 @@ void ui_screens_render_menu(const char* items[5], int count, int selected_idx) {
     }
 }
 
-void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g) {
-    int hum_int = (int)hum;
-    int hum_frac = (int)(fabs(hum - hum_int) * 100.0f);
-    int temp_int = (int)temp;
-    int temp_frac = (int)(fabs(temp - temp_int) * 100.0f);
+// В функции ui_screens_update_telemetry заменим логику:
 
+void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g) {
     char s_h_int[8], s_h_frac[8], s_t_int[8], s_t_frac[8];
-    snprintf(s_h_int, sizeof(s_h_int), "%d", hum_int);
-    snprintf(s_h_frac, sizeof(s_h_frac), ".%02d", hum_frac);
-    snprintf(s_t_int, sizeof(s_t_int), "%d", temp_int);
-    snprintf(s_t_frac, sizeof(s_t_frac), ".%02d", temp_frac);
+    char str_climate_mini[32];
+
+    // Если данные невалидны (ошибка датчика)
+    if (temp <= -90.0f || hum <= -90.0f) {
+        snprintf(s_h_int, sizeof(s_h_int), "--");
+        snprintf(s_h_frac, sizeof(s_h_frac), ".--");
+        snprintf(s_t_int, sizeof(s_t_int), "--");
+        snprintf(s_t_frac, sizeof(s_t_frac), ".--");
+        snprintf(str_climate_mini, sizeof(str_climate_mini), "--.-°C --%%");
+    } else {
+        int hum_int = (int)hum;
+        int hum_frac = (int)(fabs(hum - hum_int) * 100.0f);
+        int temp_int = (int)temp;
+        int temp_frac = (int)(fabs(temp - temp_int) * 100.0f);
+
+        snprintf(s_h_int, sizeof(s_h_int), "%d", hum_int);
+        snprintf(s_h_frac, sizeof(s_h_frac), ".%02d", hum_frac);
+        snprintf(s_t_int, sizeof(s_t_int), "%d", temp_int);
+        snprintf(s_t_frac, sizeof(s_t_frac), ".%02d", temp_frac);
+        snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
+    }
 
     char str_icons[32];
     snprintf(str_icons, sizeof(str_icons), "%s %s %s", rssi > 0 ? SYM_WIFI : " ", ble ? SYM_BLE : " ", locked ? SYM_LOCK_CLOSED : SYM_LOCK_OPEN);
 
-    char str_climate_mini[32];
-    snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
-
+    // Обновляем текст
     if (lbl_hum_int) lv_label_set_text(lbl_hum_int, s_h_int);
     if (lbl_hum_frac) lv_label_set_text(lbl_hum_frac, s_h_frac);
     if (lbl_temp_int) lv_label_set_text(lbl_temp_int, s_t_int);
     if (lbl_temp_frac) lv_label_set_text(lbl_temp_frac, s_t_frac);
+    
     if (lbl_status_icons) lv_label_set_text(lbl_status_icons, str_icons);
     if (lbl_status_climate) lv_label_set_text(lbl_status_climate, str_climate_mini);
+
+        // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT) после изменения текста.
+    // В LVGL 9 для этого мы просто заново применяем правило выравнивания.
+    if (lbl_hum_frac && lbl_hum_int) {
+        lv_obj_align_to(lbl_hum_frac, lbl_hum_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
+    }
+    if (lbl_hum_unit && lbl_hum_int) {
+        lv_obj_align_to(lbl_hum_unit, lbl_hum_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
+    }
+    
+    if (lbl_temp_frac && lbl_temp_int) {
+        lv_obj_align_to(lbl_temp_frac, lbl_temp_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
+    }
+    if (lbl_temp_unit && lbl_temp_int) {
+        lv_obj_align_to(lbl_temp_unit, lbl_temp_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
+    }
 }

@@ -109,12 +109,19 @@ static void mpr121_polling_task(void *pvParameters) {
     while (1) {
         int total_active_touches = 0;
         bool only_door_sensors_touched = true;
-        
-        // Внутри mpr121_polling_task ЗАМЕНИТЕ чтение GPIO 36 на чтение из памяти:
-        // Читаем настройку из памяти, а не с пина
+        // Читаем аппаратный пин (0 - норма, 1 - перевернут аппаратно)
+        // ВАЖНО: Проверьте вашу схему! Если у вас PIN_ORIENTATION_SENSOR = 0 означает "Перевернуто", 
+        // то код будет: bool hw_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 0);
+        bool hw_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 1); 
+
+        // Читаем программную настройку из NVS
         settings_lock();
-        bool is_flipped = (sys_settings.touchRotationIndex == 1);
+        bool sw_flipped = (sys_settings.touchRotationIndex == 1);
         settings_unlock();
+
+        // Итоговая ориентация (XOR)
+        bool is_flipped = hw_flipped ^ sw_flipped;
+        
 
         for (int i = 0; i < NUM_SENSORS; i++) {
             if (!mpr121_online[i]) continue; 
