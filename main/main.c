@@ -17,6 +17,7 @@
 #include "settings_manager.h"
 #include "i2c_manager.h"
 #include "pwm_manager.h"
+#include "uart_link.h"
 
 // Логика и UI
 #include "display_manager.h"
@@ -77,6 +78,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(settings_init());
     
     // 2. Инициализация аппаратных шин
+    ESP_ERROR_CHECK(uart_link_init());
     ESP_ERROR_CHECK(i2c_manager_init());
     ESP_ERROR_CHECK(pwm_manager_init());
 
