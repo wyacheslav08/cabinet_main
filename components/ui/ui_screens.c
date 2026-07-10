@@ -23,6 +23,10 @@ static lv_obj_t* cont_main = NULL;
 static lv_obj_t* cont_menu = NULL;
 static lv_obj_t* cont_edit = NULL;
 
+// --- ДОБАВЛЯЕМ ПЕРЕМЕННЫЕ ДЛЯ АНИМАЦИИ ---
+static lv_obj_t* lbl_loading_dots = NULL;
+static lv_timer_t* splash_timer = NULL;
+
 // Главный экран
 static lv_obj_t* lbl_hum_int;
 static lv_obj_t* lbl_hum_frac;
@@ -40,6 +44,24 @@ static lv_obj_t* menu_items[5];
 static lv_obj_t* lbl_edit_title;
 static lv_obj_t* lbl_edit_val;
 static lv_obj_t* lbl_edit_hints;
+
+// Коллбек вызывается движком LVGL каждые 500 мс
+static void splash_anim_cb(lv_timer_t * timer) {
+    static uint8_t dot_count = 0;
+    dot_count++;
+    if (dot_count > 7) dot_count = 0;
+
+    switch(dot_count) {
+        case 0: lv_label_set_text(lbl_loading_dots, ""); break;
+        case 1: lv_label_set_text(lbl_loading_dots, "."); break;
+        case 2: lv_label_set_text(lbl_loading_dots, ".."); break;
+        case 3: lv_label_set_text(lbl_loading_dots, "..."); break;
+        case 4: lv_label_set_text(lbl_loading_dots, "...."); break;
+        case 5: lv_label_set_text(lbl_loading_dots, "....."); break;
+        case 6: lv_label_set_text(lbl_loading_dots, "......"); break;
+        case 7: lv_label_set_text(lbl_loading_dots, "......."); break;
+    }
+}
 
 void ui_screens_init(void) {
     lv_obj_t* screen = lv_screen_active();
@@ -65,7 +87,15 @@ void ui_screens_init(void) {
     lv_obj_set_style_text_color(lbl_wait, lv_color_hex(0xAAAAAA), 0);
     lv_label_set_text(lbl_wait, "Калибровка\nсенсоров.\nПожалуйста,\nподождите");
     lv_obj_set_style_text_align(lbl_wait, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(lbl_wait, LV_ALIGN_CENTER, 0, 30);
+    lv_obj_align(lbl_wait, LV_ALIGN_CENTER, 0, 15);
+
+    // --- ДОБАВЛЯЕМ ЭЛЕМЕНТ ДЛЯ АНИМИРОВАННЫХ ТОЧЕК ---
+    lbl_loading_dots = lv_label_create(cont_splash);
+    lv_obj_set_style_text_font(lbl_loading_dots, &font_cyrillic_20, 0); // Крупный шрифт
+    lv_obj_set_style_text_color(lbl_loading_dots, lv_color_hex(0xFFB800), 0); // Золотой цвет
+    lv_label_set_text(lbl_loading_dots, "");
+    // Привязываем точки строго под текстом ожидания
+    lv_obj_align_to(lbl_loading_dots, lbl_wait, LV_ALIGN_OUT_BOTTOM_MID, 0, -20);
 
     // =========================================================================
     // 1. ГЛАВНЫЙ ЭКРАН
@@ -180,7 +210,7 @@ void ui_screens_update_layout(bool is_landscape) {
     if (is_landscape) {
         // Горизонтально (90/270 град) - По краям внизу
         lv_obj_align(lbl_hum_int, LV_ALIGN_BOTTOM_LEFT, -10, -5); //5,-5
-        lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -5, -5); // 45,-5
+        lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -10, -5); // 45,-5
     } else {
         // Вертикально (0/180 град) - Друг над другом (Влажность вверху слева, Темп внизу справа)
         lv_obj_align(lbl_hum_int, LV_ALIGN_TOP_LEFT, 0, 25);    // 5,20
@@ -199,13 +229,24 @@ void ui_screens_show_splash(void) {
     lv_obj_add_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+
+    // Запускаем таймер анимации (500 мс)
+    if (!splash_timer) {
+        splash_timer = lv_timer_create(splash_anim_cb, 500, NULL);
+    }
 }
 
 void ui_screens_show_main(void) {
-    lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN); // <--- СКРЫВАЕМ SPLASH
+    lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+
+    // Загрузка завершена, убиваем таймер анимации навсегда
+    if (splash_timer) {
+        lv_timer_delete(splash_timer);
+        splash_timer = NULL;
+    }
 }
 
 void ui_screens_show_menu(void) {
@@ -265,14 +306,14 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
         snprintf(str_climate_mini, sizeof(str_climate_mini), "--.-°C --%%");
     } else {
         int hum_int = (int)hum;
-        int hum_frac = (int)(fabs(hum - hum_int) * 100.0f);
+        int hum_frac = (int)(fabs(hum - hum_int) * 10.0f);
         int temp_int = (int)temp;
-        int temp_frac = (int)(fabs(temp - temp_int) * 100.0f);
+        int temp_frac = (int)(fabs(temp - temp_int) * 10.0f);
 
         snprintf(s_h_int, sizeof(s_h_int), "%d", hum_int);
-        snprintf(s_h_frac, sizeof(s_h_frac), ".%02d", hum_frac);
+        snprintf(s_h_frac, sizeof(s_h_frac), ".%01d", hum_frac);
         snprintf(s_t_int, sizeof(s_t_int), "%d", temp_int);
-        snprintf(s_t_frac, sizeof(s_t_frac), ".%02d", temp_frac);
+        snprintf(s_t_frac, sizeof(s_t_frac), ".%01d", temp_frac);
         snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
     }
 
