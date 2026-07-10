@@ -63,7 +63,7 @@ void ui_screens_init(void) {
     lv_obj_t* lbl_wait = lv_label_create(cont_splash);
     lv_obj_set_style_text_font(lbl_wait, &font_cyrillic_12, 0);
     lv_obj_set_style_text_color(lbl_wait, lv_color_hex(0xAAAAAA), 0);
-    lv_label_set_text(lbl_wait, "Калибровка\nсенсоров...\nПожалуйста,\nподождите");
+    lv_label_set_text(lbl_wait, "Калибровка\nсенсоров.\nПожалуйста,\nподождите");
     lv_obj_set_style_text_align(lbl_wait, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(lbl_wait, LV_ALIGN_CENTER, 0, 30);
 
@@ -78,16 +78,16 @@ void ui_screens_init(void) {
     // Влажность
     lbl_hum_int = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_int, &font_cyrillic_48, 0);
-    lv_obj_set_style_text_color(lbl_hum_int, lv_color_hex(0x00FFFF), 0);
+    lv_obj_set_style_text_color(lbl_hum_int, lv_color_hex(0xFF8800), 0);
     
     lbl_hum_frac = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_frac, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_hum_frac, lv_color_hex(0x00AAAA), 0);
+    lv_obj_set_style_text_color(lbl_hum_frac, lv_color_hex(0xFF8800), 0);
     
     lbl_hum_unit = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_unit, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_hum_unit, lv_color_hex(0xAAAAAA), 0);
-    lv_label_set_text(lbl_hum_unit, "H%");
+    lv_obj_set_style_text_color(lbl_hum_unit, lv_color_hex(0xFF8800), 0);
+    lv_label_set_text(lbl_hum_unit, "%н");
 
     // Температура
     lbl_temp_int = lv_label_create(cont_main);
@@ -96,12 +96,12 @@ void ui_screens_init(void) {
     
     lbl_temp_frac = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_frac, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_temp_frac, lv_color_hex(0xAA5500), 0);
+    lv_obj_set_style_text_color(lbl_temp_frac, lv_color_hex(0xFF8800), 0);
     
     lbl_temp_unit = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_unit, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0xAAAAAA), 0);
-    lv_label_set_text(lbl_temp_unit, "C°");
+    lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0xFF8800), 0);
+    lv_label_set_text(lbl_temp_unit, "°С");
 
     // =========================================================================
     // 2. ЭКРАН МЕНЮ (Исправлено наложение текста)
@@ -179,12 +179,12 @@ void ui_screens_init(void) {
 void ui_screens_update_layout(bool is_landscape) {
     if (is_landscape) {
         // Горизонтально (90/270 град) - По краям внизу
-        lv_obj_align(lbl_hum_int, LV_ALIGN_BOTTOM_LEFT, 5, -5);
-        lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -45, -5);
+        lv_obj_align(lbl_hum_int, LV_ALIGN_BOTTOM_LEFT, -10, -5); //5,-5
+        lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -5, -5); // 45,-5
     } else {
         // Вертикально (0/180 град) - Друг над другом (Влажность вверху слева, Темп внизу справа)
-        lv_obj_align(lbl_hum_int, LV_ALIGN_TOP_LEFT, 5, 20);
-        lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -45, -20);
+        lv_obj_align(lbl_hum_int, LV_ALIGN_TOP_LEFT, 0, 25);    // 5,20
+        lv_obj_align(lbl_temp_int, LV_ALIGN_BOTTOM_RIGHT, -25, 0);    //-45,-20
     }
 
     // Выравнивание дробей и символов относительно целых чисел (Одинаково для обоих режимов)
