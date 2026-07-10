@@ -122,12 +122,15 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
 // 2. СОСТОЯНИЕ ДВИЖКА (STATE MACHINE)
 // =========================================================================
 typedef enum {
+    STATE_SPLASH_SCREEN = -1,
     STATE_MAIN_SCREEN = 0,
     STATE_IN_MENU,
     STATE_EDITING_VALUE
 } engine_state_t;
 
-static engine_state_t current_state = STATE_MAIN_SCREEN;
+static engine_state_t current_state = STATE_SPLASH_SCREEN;
+
+//static engine_state_t current_state = STATE_MAIN_SCREEN;
 static menu_node_id_t current_folder_id = M_ROOT;
 static int cursor_idx = 0;
 static int scroll_offset = 0;
@@ -303,10 +306,16 @@ static void update_view(void) {
 }
 
 void menu_engine_init(void) {
+    current_state = STATE_SPLASH_SCREEN;
     current_state = STATE_MAIN_SCREEN;
     current_folder_id = M_ROOT;
     cursor_idx = 0;
     scroll_offset = 0;
+}
+
+void menu_engine_boot_complete(void) {
+    current_state = STATE_MAIN_SCREEN;
+    ui_screens_show_main();
 }
 
 bool menu_engine_is_on_main_screen(void) {
@@ -327,6 +336,8 @@ void menu_engine_force_main_screen(void) {
 // 5. ОБРАБОТЧИК ЖЕСТОВ
 // =========================================================================
 esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
+    // Игнорируем жесты, пока висит экран загрузки
+    if (current_state == STATE_SPLASH_SCREEN) return ESP_OK; 
     if (current_state == STATE_MAIN_SCREEN) {
         if (event == EVENT_SWIPE_RIGHT || event == EVENT_TAP) {
             current_state = STATE_IN_MENU;

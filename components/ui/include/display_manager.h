@@ -90,6 +90,7 @@ esp_err_t display_manager_menu_select(display_handle_t handle, display_menu_item
  */
 esp_err_t display_manager_set_brightness(display_handle_t handle, uint8_t brightness_pct);
 esp_err_t display_manager_set_power(display_handle_t handle, bool power_on);
+esp_err_t display_manager_boot_complete(display_handle_t handle);
 esp_err_t display_manager_destroy(display_handle_t handle);
 /**
  * @brief Аппаратный разворот интерфейса на 180 градусов

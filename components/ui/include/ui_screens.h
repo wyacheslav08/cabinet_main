@@ -11,6 +11,7 @@ extern "C" {
 void ui_screens_init(void);
 
 // Переключение видимости экранов
+void ui_screens_show_splash(void); // Приветственный экран
 void ui_screens_show_main(void);
 void ui_screens_show_menu(void);
 

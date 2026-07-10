@@ -189,13 +189,14 @@ esp_err_t display_manager_init(display_handle_t *out_handle) {
         ui_screens_init();
         menu_engine_init();
         ui_screens_show_main();
+        ui_screens_show_splash();
         lvgl_port_unlock();
     }
 
-    // 7. ВАЖНО: Стартуем систему с выключенной подсветкой!
+    // 7. ВАЖНО: Стартуем систему с вкключенной подсветкой!
     mgr->current_brightness = 100;
-    mgr->is_power_on = false; // <--- Было true
-    set_backlight_duty(0);    // <--- Было set_backlight_duty(mgr->current_brightness)
+    mgr->is_power_on = true; 
+    set_backlight_duty(mgr->current_brightness);    // <--- Было set_backlight_duty(mgr->current_brightness)
 
     *out_handle = mgr;
     
@@ -281,7 +282,7 @@ esp_err_t display_manager_update_status(display_handle_t handle, const ui_status
     if (!handle || !data) return ESP_ERR_INVALID_ARG;
 
     // Добавляем статический флаг первого запуска
-    static bool is_first_update = true;
+    //static bool is_first_update = true;
 
     // Сначала обновляем текст на экране (в фоне)
     if (lvgl_port_lock(pdMS_TO_TICKS(50))) {
@@ -291,11 +292,11 @@ esp_err_t display_manager_update_status(display_handle_t handle, const ui_status
         lvgl_port_unlock();
     }
 
-    // Как только отрисовались реальные цифры — включаем подсветку
+    /*/ Как только отрисовались реальные цифры — включаем подсветку
     if (is_first_update) {
         is_first_update = false;
         display_manager_set_power(handle, true);
-    }
+    }*/
 
     return ESP_OK;
 }
@@ -332,5 +333,15 @@ esp_err_t display_manager_destroy(display_handle_t handle) {
     if (handle->io_handle) esp_lcd_panel_io_del(handle->io_handle);
     spi_bus_free(LCD_SPI_HOST);
     heap_caps_free(handle);
+    return ESP_OK;
+}
+
+// Функция завершения загрузки
+esp_err_t display_manager_boot_complete(display_handle_t handle) {
+    if (!handle) return ESP_ERR_INVALID_ARG;
+    if (lvgl_port_lock(portMAX_DELAY)) {
+        menu_engine_boot_complete();
+        lvgl_port_unlock();
+    }
     return ESP_OK;
 }

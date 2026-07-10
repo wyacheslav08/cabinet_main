@@ -93,7 +93,7 @@ void app_main(void) {
     // 5. Запуск климат-контроля (Создает задачу на Core 1, опрашивает SHT40)
     ESP_ERROR_CHECK(climate_control_init());
 
-    // 6. Запуск маршрутизатора интерфейса на Core 0
+        // 6. Запуск маршрутизатора интерфейса на Core 0
     BaseType_t res = xTaskCreatePinnedToCore(
         hmi_router_task, 
         "hmi_router", 
@@ -106,4 +106,17 @@ void app_main(void) {
     configASSERT(res == pdPASS);
 
     ESP_LOGI(TAG, "=== BOOT COMPLETE. SCHEDULER RUNNING. ===");
+
+    // ==============================================================
+    // 7. ОЖИДАНИЕ СТАБИЛИЗАЦИИ ЕМКОСТНЫХ СЕНСОРОВ (22 СЕКУНДЫ)
+    // В это время на дисплее висит красивый экран "GUITAR CABINET"
+    // ==============================================================
+    ESP_LOGI(TAG, "Waiting 22 seconds for sensors to stabilize...");
+    vTaskDelay(pdMS_TO_TICKS(22000));
+
+    // Команда UI переключиться на главный экран
+    if (g_display_handle) {
+        display_manager_boot_complete(g_display_handle);
+    }
+    ESP_LOGI(TAG, "=== SYSTEM FULLY READY ===");
 }

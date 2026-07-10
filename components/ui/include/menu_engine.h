@@ -18,6 +18,9 @@ bool menu_engine_is_on_main_screen(void);
 // Принудительный сброс на главный экран (для таймера бездействия)
 void menu_engine_force_main_screen(void);
 
+// НОВАЯ ФУНКЦИЯ: Сигнал об окончании загрузки
+void menu_engine_boot_complete(void);
+
 #ifdef __cplusplus
 }
 #endif
