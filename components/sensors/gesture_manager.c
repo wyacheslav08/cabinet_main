@@ -30,8 +30,14 @@ bool gesture_is_lock_pressed(void) {
 // Вспомогательная функция для безопасной отправки событий
 static void send_hmi_event(hmi_msg_t *msg) {
     if (hmi_event_queue != NULL) {
-        if (xQueueSend(hmi_event_queue, msg, pdMS_TO_TICKS(10)) != pdPASS) {
-            ESP_LOGW(TAG, "HMI Queue FULL! Dropping event %d", msg->type);
+        // Пробуем отправить с нулевым таймаутом (мы в RT-задаче, блокироваться нельзя)
+        if (xQueueSend(hmi_event_queue, msg, 0) != pdPASS) {
+            // Очередь полна. Читаем (и удаляем) один старый элемент.
+            hmi_msg_t dummy;
+            xQueueReceive(hmi_event_queue, &dummy, 0); 
+            // Теперь место есть, отправляем свежий жест
+            xQueueSend(hmi_event_queue, msg, 0);
+            ESP_LOGD(TAG, "HMI Queue full. Oldest event dropped.");
         }
     }
 }
@@ -58,28 +64,57 @@ static bool is_door_sensor(uint8_t id) {
 static hmi_event_type_t analyze_swipe(bool is_flipped) {
     if (swipe_len < MIN_SWIPE_LEN) return EVENT_NONE;
 
+    int min_x = 99, max_x = -1;
+    int min_y = 99, max_y = -1;
     int x_first, y_first, x_last, y_last;
+
     get_xy_from_id(swipe_buffer[0], &x_first, &y_first, is_flipped);
     get_xy_from_id(swipe_buffer[swipe_len - 1], &x_last, &y_last, is_flipped);
 
-    int min_y = 99, max_y = -1;
+    // 1. Проверка на "прыжки" (разрывы) и вычисление границ (Bounding Box)
     for (int i = 0; i < swipe_len; i++) {
         int x, y;
         get_xy_from_id(swipe_buffer[i], &x, &y, is_flipped);
+        
+        if (x < min_x) min_x = x;
+        if (x > max_x) max_x = x;
         if (y < min_y) min_y = y;
         if (y > max_y) max_y = y;
+
+        // Защита от перепрыгивания рядов (например, 0 -> 1 -> 8)
+        if (i > 0) {
+            int prev_x, prev_y;
+            get_xy_from_id(swipe_buffer[i - 1], &prev_x, &prev_y, is_flipped);
+            int dx = abs(x - prev_x);
+            int dy = abs(y - prev_y);
+            
+            // Физический палец не может перескочить через ряд или столбец, 
+            // не задев промежуточный контакт. Если перескочил - жест бракуется.
+            if (dx > 1 || dy > 1) {
+                return EVENT_NONE; 
+            }
+        }
     }
 
-    int y_spread = max_y - min_y;
+    int spread_y = max_y - min_y;
 
-    if (y_spread <= 1) {
+    // 2. Горизонтальные свайпы (Влево / Вправо)
+    // Правило: Задеты максимум 2 ряда (spread_y <= 1), движение строго от края до края
+    if (spread_y <= 1) {
+        // ИНВЕРСИЯ: Меняем местами LEFT и RIGHT
         if (x_first == 0 && x_last == 2) return EVENT_SWIPE_LEFT;
         if (x_first == 2 && x_last == 0) return EVENT_SWIPE_RIGHT;
     }
-    if (y_spread >= 2) {
+
+    // 3. Вертикальные свайпы (Вверх / Вниз)
+    // Правило: Задеты 3 и более рядов (spread_y >= 2). 
+    // Пример: 0,3,1,4,2,5,8 -> spread_y равен 2 (ряды 0, 1, 2) -> Это Вниз.
+    if (spread_y >= 2) {
         if (y_last > y_first) return EVENT_SWIPE_DOWN;
         if (y_last < y_first) return EVENT_SWIPE_UP;
     }
+
+    // Если жест не попал ни под одно правило (просто хаотичное касание)
     return EVENT_NONE;
 }
 

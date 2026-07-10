@@ -18,6 +18,7 @@ typedef enum {
     EVENT_DOOR_UNLOCK,
     EVENT_ERROR_SENSOR_OFFLINE,
     EVENT_INFO_SENSOR_RESTORED,
+    EVENT_SYSTEM_IDLE_TIMEOUT,
 } hmi_event_type_t;
 
 // Структура сообщения для очереди

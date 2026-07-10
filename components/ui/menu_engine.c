@@ -419,4 +419,11 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
         }
     }
     return ESP_OK;
+
+        if (event == EVENT_SYSTEM_IDLE_TIMEOUT) {
+        if (!menu_engine_is_on_main_screen()) {
+            menu_engine_force_main_screen();
+        }
+        return ESP_OK;
+    }
 }

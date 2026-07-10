@@ -22,7 +22,8 @@
 #include "settings_manager.h" 
 
 // Глобальная переменная для времени последней активности
-static uint64_t last_activity_time_ms = 0;
+static uint32_t last_activity_time_ms = 0;
+static bool is_timeout_event_sent = false;
 static const char *TAG = "DISPLAY_MGR";
 
 struct display_manager_t {
@@ -102,18 +103,16 @@ static void inactivity_timer_cb(void* arg) {
     uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000ULL);
     uint32_t idle_time = current_time - last_activity_time_ms;
 
-    // Логика 1: Выход из меню на Главный экран
+    // Отправляем событие ТОЛЬКО ОДИН РАЗ
     if (m_timeout > 0 && idle_time >= m_timeout) {
-        if (!menu_engine_is_on_main_screen()) {
-            // Используем таймаут мьютекса, чтобы не заблокировать прерывание таймера
-            if (lvgl_port_lock(pdMS_TO_TICKS(50))) {
-                menu_engine_force_main_screen();
-                lvgl_port_unlock();
-            }
+        if (!is_timeout_event_sent) {
+            hmi_msg_t msg = { .type = 9 /* EVENT_SYSTEM_IDLE_TIMEOUT */, .sensor_index = 0 };
+            xQueueSend(hmi_event_queue, &msg, 0);
+            is_timeout_event_sent = true; // Блокируем спам в очередь
         }
     }
 
-    // Логика 2: Отключение экрана (Гасим подсветку и матрицу)
+    // Отключение экрана
     if (s_timeout > 0 && idle_time >= s_timeout) {
         if (handle->is_power_on) {
             display_manager_set_power(handle, false);
@@ -193,10 +192,10 @@ esp_err_t display_manager_init(display_handle_t *out_handle) {
         lvgl_port_unlock();
     }
 
-    // 7. Включение экрана и установка начальной ориентации из NVS
+    // 7. ВАЖНО: Стартуем систему с выключенной подсветкой!
     mgr->current_brightness = 100;
-    mgr->is_power_on = true;
-    set_backlight_duty(mgr->current_brightness);
+    mgr->is_power_on = false; // <--- Было true
+    set_backlight_duty(0);    // <--- Было set_backlight_duty(mgr->current_brightness)
 
     *out_handle = mgr;
     
@@ -249,19 +248,25 @@ esp_err_t display_manager_set_rotation(display_handle_t handle, uint8_t rotation
 esp_err_t display_manager_process_gesture(display_handle_t handle, hmi_event_type_t event) {
     if (!handle) return ESP_ERR_INVALID_ARG;
 
-    // СБРОС ТАЙМЕРА БЕЗДЕЙСТВИЯ ПРИ ЛЮБОМ КАСАНИИ
-    last_activity_time_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+    // КРИТИЧНОЕ ИСПРАВЛЕНИЕ: 
+    // Физические жесты сбрасывают таймер простоя. 
+    // Системное событие таймаута (возврат из меню) — НЕ СБРАСЫВАЕТ.
+    if (event != EVENT_SYSTEM_IDLE_TIMEOUT) {
+        last_activity_time_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+        is_timeout_event_sent = false;
 
-    
+        // Если экран был погашен, ЛЮБОЙ физический жест включает его обратно
+        if (!handle->is_power_on) {
+            display_manager_set_power(handle, true);
+            // Возвращаем ESP_OK без передачи жеста в меню. 
+            // Это защита: первое касание просто будит систему.
+            return ESP_OK; 
+        }
+    }
 
     // Если мы на главном экране и сделали свайп влево — гасим экран (сбережение энергии)
     if (menu_engine_is_on_main_screen() && event == EVENT_SWIPE_LEFT) {
         return display_manager_set_power(handle, false);
-    }
-    
-    // Если экран был погашен, любое касание включает его обратно
-    if (!handle->is_power_on) {
-        return display_manager_set_power(handle, true);
     }
 
     // Передаем жест в движок меню
@@ -275,12 +280,23 @@ esp_err_t display_manager_process_gesture(display_handle_t handle, hmi_event_typ
 esp_err_t display_manager_update_status(display_handle_t handle, const ui_status_data_t *data) {
     if (!handle || !data) return ESP_ERR_INVALID_ARG;
 
+    // Добавляем статический флаг первого запуска
+    static bool is_first_update = true;
+
+    // Сначала обновляем текст на экране (в фоне)
     if (lvgl_port_lock(pdMS_TO_TICKS(50))) {
         ui_screens_update_telemetry(data->temperature, data->humidity, data->wifi_rssi_percent, 
                                     data->is_ble_connected, data->is_locked, 
                                     data->is_guitar_present, data->weight_grams);
         lvgl_port_unlock();
     }
+
+    // Как только отрисовались реальные цифры — включаем подсветку
+    if (is_first_update) {
+        is_first_update = false;
+        display_manager_set_power(handle, true);
+    }
+
     return ESP_OK;
 }
 
@@ -294,22 +310,16 @@ esp_err_t display_manager_set_brightness(display_handle_t handle, uint8_t bright
 esp_err_t display_manager_set_power(display_handle_t handle, bool power_on) {
     if (!handle) return ESP_ERR_INVALID_ARG;
     if (handle->is_power_on == power_on) return ESP_OK;
+    
     handle->is_power_on = power_on;
 
     if (power_on) {
-        if (lvgl_port_lock(portMAX_DELAY)) { 
-            esp_lcd_panel_disp_on_off(handle->panel_handle, true); 
-            lvgl_port_unlock(); 
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
+        // Просто плавно включаем подсветку
         set_backlight_duty(handle->current_brightness);
     } else {
+        // Просто гасим подсветку. 
+        // ВАЖНО: Убрано esp_lcd_panel_disp_on_off, чтобы избежать "белого экрана"
         set_backlight_duty(0);
-        vTaskDelay(pdMS_TO_TICKS(20));
-        if (lvgl_port_lock(portMAX_DELAY)) { 
-            esp_lcd_panel_disp_on_off(handle->panel_handle, false); 
-            lvgl_port_unlock(); 
-        }
     }
     return ESP_OK;
 }
