@@ -45,7 +45,7 @@
 #define LCD_V_RES               160         // Вертикальное разрешение
 #define LCD_PIXEL_CLOCK_HZ      (10 * 1000 * 1000) // Частота SPI 10 МГц
 #define LCD_GAP_X               1           // Смещение матрицы в стекле ST7735
-#define LCD_GAP_Y               1
+#define LCD_GAP_Y               2
 
 // --- 4. ШИНА I2S (Цифровой микрофон INMP441 для DSP анализа дерева) ---
 #define PIN_I2S_BCLK            26          // Bit Clock

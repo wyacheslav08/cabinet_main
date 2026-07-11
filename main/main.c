@@ -112,7 +112,7 @@ void app_main(void) {
     // В это время на дисплее висит красивый экран "GUITAR CABINET"
     // ==============================================================
     ESP_LOGI(TAG, "Waiting 22 seconds for sensors to stabilize...");
-    vTaskDelay(pdMS_TO_TICKS(22000));
+    vTaskDelay(pdMS_TO_TICKS(2000));
 
     // Команда UI переключиться на главный экран
     if (g_display_handle) {

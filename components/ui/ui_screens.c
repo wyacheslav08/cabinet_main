@@ -62,6 +62,9 @@ static void splash_anim_cb(lv_timer_t * timer) {
 void ui_screens_init(void) {
     lv_obj_t* screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
+    
+    // ПРАВИЛЬНЫЙ СПОСОБ (LVGL 9): Скрываем полосу визуально, не ломая логику движка
+    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
     // =========================================================================
     // 0. ЭКРАН ЗАГРУЗКИ (SPLASH SCREEN)
@@ -70,10 +73,11 @@ void ui_screens_init(void) {
     lv_obj_set_size(cont_splash, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(cont_splash, lv_color_hex(0x000000), 0);
     lv_obj_set_style_border_width(cont_splash, 0, 0);
+    lv_obj_set_scrollbar_mode(cont_splash, LV_SCROLLBAR_MODE_OFF);
 
     lv_obj_t* lbl_logo = lv_label_create(cont_splash);
-    lv_obj_set_style_text_font(lbl_logo, &font_cyrillic_20, 0); // Крупный шрифт
-    lv_obj_set_style_text_color(lbl_logo, lv_color_hex(0xFFB800), 0); // Золотой цвет
+    lv_obj_set_style_text_font(lbl_logo, &font_cyrillic_20, 0); 
+    lv_obj_set_style_text_color(lbl_logo, lv_color_hex(0xFFB800), 0); 
     lv_label_set_text(lbl_logo, "GUITAR\nCABINET");
     lv_obj_set_style_text_align(lbl_logo, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(lbl_logo, LV_ALIGN_CENTER, 0, -40);
@@ -85,12 +89,10 @@ void ui_screens_init(void) {
     lv_obj_set_style_text_align(lbl_wait, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(lbl_wait, LV_ALIGN_CENTER, 0, 15);
 
-    // --- ДОБАВЛЯЕМ ЭЛЕМЕНТ ДЛЯ АНИМИРОВАННЫХ ТОЧЕК ---
     lbl_loading_dots = lv_label_create(cont_splash);
-    lv_obj_set_style_text_font(lbl_loading_dots, &font_cyrillic_20, 0); // Крупный шрифт
-    lv_obj_set_style_text_color(lbl_loading_dots, lv_color_hex(0xFFB800), 0); // Золотой цвет
+    lv_obj_set_style_text_font(lbl_loading_dots, &font_cyrillic_20, 0); 
+    lv_obj_set_style_text_color(lbl_loading_dots, lv_color_hex(0xFFB800), 0); 
     lv_label_set_text(lbl_loading_dots, "");
-    // Привязываем точки строго под текстом ожидания
     lv_obj_align_to(lbl_loading_dots, lbl_wait, LV_ALIGN_OUT_BOTTOM_MID, 0, -20);
 
     // =========================================================================
@@ -100,6 +102,7 @@ void ui_screens_init(void) {
     lv_obj_set_size(cont_main, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_opa(cont_main, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_main, 0, 0);
+    lv_obj_set_scrollbar_mode(cont_main, LV_SCROLLBAR_MODE_OFF);
 
     // Влажность
     lbl_hum_int = lv_label_create(cont_main);
@@ -130,7 +133,7 @@ void ui_screens_init(void) {
     lv_label_set_text(lbl_temp_unit, "°С");
 
     // =========================================================================
-    // 2. ЭКРАН МЕНЮ (Исправлено наложение текста)
+    // 2. ЭКРАН МЕНЮ
     // =========================================================================
     cont_menu = lv_obj_create(screen);
     lv_obj_set_size(cont_menu, lv_pct(100), lv_pct(100));
@@ -138,13 +141,15 @@ void ui_screens_init(void) {
     lv_obj_set_style_border_width(cont_menu, 0, 0);
     lv_obj_set_style_pad_all(cont_menu, 0, 0);
     lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_scrollbar_mode(cont_menu, LV_SCROLLBAR_MODE_OFF);
 
     lv_obj_t* top_bar = lv_obj_create(cont_menu);
-    lv_obj_set_size(top_bar, lv_pct(100), 24); // Высота статус-бара 24px
+    lv_obj_set_size(top_bar, lv_pct(100), 24); 
     lv_obj_set_style_bg_color(top_bar, lv_color_hex(0x222222), 0);
     lv_obj_set_style_border_width(top_bar, 0, 0);
     lv_obj_set_style_pad_all(top_bar, 2, 0);
     lv_obj_align(top_bar, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_scrollbar_mode(top_bar, LV_SCROLLBAR_MODE_OFF); // Защита для статус-бара
 
     lbl_status_icons = lv_label_create(top_bar);
     lv_obj_set_style_text_font(lbl_status_icons, &font_cyrillic_12, 0);
@@ -157,14 +162,14 @@ void ui_screens_init(void) {
     lv_obj_align(lbl_status_climate, LV_ALIGN_RIGHT_MID, -2, 0);
 
     lv_obj_t* list_cont = lv_obj_create(cont_menu);
-    // КРИТИЧНО: Отступаем сверху на 26px, чтобы не лезть на статус-бар
     lv_obj_set_size(list_cont, lv_pct(100), lv_pct(100));
     lv_obj_set_style_pad_top(list_cont, 26, 0); 
     lv_obj_set_style_bg_opa(list_cont, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list_cont, 0, 0);
     lv_obj_set_layout(list_cont, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(list_cont, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list_cont, 0, 0); // Мелкий отступ между строками
+    lv_obj_set_style_pad_row(list_cont, 0, 0); 
+    lv_obj_set_scrollbar_mode(list_cont, LV_SCROLLBAR_MODE_OFF); // Скрываем скроллбар списка
 
     for (int i = 0; i < 5; i++) {
         menu_items[i] = lv_label_create(list_cont);
@@ -175,13 +180,14 @@ void ui_screens_init(void) {
     }
 
     // =========================================================================
-    // 3. НОВЫЙ ЭКРАН РЕДАКТИРОВАНИЯ
+    // 3. ЭКРАН РЕДАКТИРОВАНИЯ
     // =========================================================================
     cont_edit = lv_obj_create(screen);
     lv_obj_set_size(cont_edit, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_bg_color(cont_edit, lv_color_hex(0x001133), 0); // Темно-синий фон
+    lv_obj_set_style_bg_color(cont_edit, lv_color_hex(0x001133), 0); 
     lv_obj_set_style_border_width(cont_edit, 0, 0);
     lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_scrollbar_mode(cont_edit, LV_SCROLLBAR_MODE_OFF);
 
     lbl_edit_title = lv_label_create(cont_edit);
     lv_obj_set_style_text_font(lbl_edit_title, &font_cyrillic_16, 0);
