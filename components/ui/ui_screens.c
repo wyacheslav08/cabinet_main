@@ -49,17 +49,13 @@ static lv_obj_t* lbl_edit_hints;
 static void splash_anim_cb(lv_timer_t * timer) {
     static uint8_t dot_count = 0;
     dot_count++;
-    if (dot_count > 7) dot_count = 0;
+    if (dot_count > 3) dot_count = 0;
 
     switch(dot_count) {
         case 0: lv_label_set_text(lbl_loading_dots, ""); break;
         case 1: lv_label_set_text(lbl_loading_dots, "."); break;
         case 2: lv_label_set_text(lbl_loading_dots, ".."); break;
         case 3: lv_label_set_text(lbl_loading_dots, "..."); break;
-        case 4: lv_label_set_text(lbl_loading_dots, "...."); break;
-        case 5: lv_label_set_text(lbl_loading_dots, "....."); break;
-        case 6: lv_label_set_text(lbl_loading_dots, "......"); break;
-        case 7: lv_label_set_text(lbl_loading_dots, "......."); break;
     }
 }
 
