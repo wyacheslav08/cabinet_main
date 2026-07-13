@@ -51,19 +51,34 @@ static void hmi_router_task(void *pvParameters) {
     ESP_LOGI(TAG, "HMI Router Task started on Core 0");
 
     while (1) {
-        // Ожидание события жеста из очереди (блокировка без нагрузки на CPU)
         if (xQueueReceive(hmi_event_queue, &msg, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Routing HMI Event: %d", msg.type);
             
-            // Защита: передаем жест в менеджер дисплея
-            if (g_display_handle != NULL) {
+            // Если это просто жест - отправляем в LVGL
+            if (msg.type != EVENT_DOOR_UNLOCK && g_display_handle != NULL) {
                 display_manager_process_gesture(g_display_handle, msg.type);
             }
 
-            // Глобальная обработка экстренных событий
+            // Экстренное событие: ОТКРЫТИЕ ЗАМКА
             if (msg.type == EVENT_DOOR_UNLOCK) {
-                ESP_LOGW(TAG, "DOOR UNLOCK COMMAND RECEIVED!");
-                // Здесь будет вызов pwm_set_servo_angle()
+                ESP_LOGW(TAG, "!!! DOOR UNLOCK COMMAND !!!");
+                
+                // 1. Аппаратно "глушим" сенсорную панель
+                gesture_set_panel_enabled(false);
+                
+                // 2. Открываем замок (Вызов твоей функции ШИМ или GPIO)
+                // pwm_set_servo_angle(90); // Или gpio_set_level(PIN_SOLENOID_DOOR, 1);
+                
+                // 3. Ждем время удержания замка
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                
+                // 4. Закрываем замок
+                // pwm_set_servo_angle(0); // Или gpio_set_level(PIN_SOLENOID_DOOR, 0);
+                
+                // 5. Ждем затухания ЭМИ индуктивности катушки
+                vTaskDelay(pdMS_TO_TICKS(200));
+                
+                // 6. Снова включаем панель
+                gesture_set_panel_enabled(true);
             }
         }
     }

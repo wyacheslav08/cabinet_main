@@ -5,215 +5,222 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "settings_manager.h"
+#include <math.h>
 
 static const char *TAG = "GESTURE_MGR";
 
-#define MAX_SWIPE_LEN               32
+// ================= НАСТРОЙКИ ЖЕСТОВ =================
+#define MAX_SWIPE_LEN               64
 #define MIN_SWIPE_LEN               3
-#define DOOR_UNLOCK_TIME_MS         1500  
-#define POLL_RATE_MS                50    
+#define DOOR_UNLOCK_TIME_MS         1500
+#define POLL_RATE_MS                50
+#define MAX_SWIPE_TOUCHES           3 
 
-static const uint8_t mux_channels[] = {MUX_CH_MPR_1, MUX_CH_MPR_2, MUX_CH_MPR_3, MUX_CH_MPR_4};
-#define NUM_SENSORS (sizeof(mux_channels) / sizeof(mux_channels[0]))
+static const uint8_t possible_addresses[] = {MPR121_ADDR_1, MPR121_ADDR_2};
+#define MAX_POSSIBLE_SENSORS (sizeof(possible_addresses) / sizeof(possible_addresses[0]))
 
-static bool mpr121_online[NUM_SENSORS] = {false};
-static volatile bool lock_button_state = false;
+// ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
 QueueHandle_t hmi_event_queue = NULL;
+static volatile bool lock_button_state = false;
+
+// Управление панелью
+static volatile bool g_panel_enabled = true;
+static volatile bool g_panel_inverted = false;
+
+// Состояние сенсоров
+static uint8_t active_addresses[MAX_POSSIBLE_SENSORS];
+static uint8_t active_sensor_count = 0;
 
 static uint8_t swipe_buffer[MAX_SWIPE_LEN];
 static uint8_t swipe_len = 0;
 
-bool gesture_is_lock_pressed(void) {
-    return lock_button_state;
-}
+// ================= ФУНКЦИИ API =================
 
-// Вспомогательная функция для безопасной отправки событий
+bool gesture_is_lock_pressed(void) { return lock_button_state; }
+void gesture_set_panel_enabled(bool enabled) { g_panel_enabled = enabled; }
+void gesture_set_panel_inverted(bool inverted) { g_panel_inverted = inverted; }
+
 static void send_hmi_event(hmi_msg_t *msg) {
     if (hmi_event_queue != NULL) {
-        // Пробуем отправить с нулевым таймаутом (мы в RT-задаче, блокироваться нельзя)
         if (xQueueSend(hmi_event_queue, msg, 0) != pdPASS) {
-            // Очередь полна. Читаем (и удаляем) один старый элемент.
             hmi_msg_t dummy;
             xQueueReceive(hmi_event_queue, &dummy, 0); 
-            // Теперь место есть, отправляем свежий жест
             xQueueSend(hmi_event_queue, msg, 0);
-            ESP_LOGD(TAG, "HMI Queue full. Oldest event dropped.");
         }
     }
 }
 
-static uint8_t get_global_id(uint8_t mux_index, uint8_t mpr_pin) {
-    return (mux_index * 12) + mpr_pin + 1;
-}
+// ================= МАТЕМАТИКА ЖЕСТОВ =================
 
-// Оптимизация: is_flipped передается аргументом, чтобы не читать GPIO в цикле
-static void get_xy_from_id(uint8_t id, int *x, int *y, bool is_flipped) {
-    *x = (id - 1) % 3;
-    *y = (id - 1) / 3;
-
-    if (is_flipped) {
-        *x = 2 - *x;
-        *y = 15 - *y;
-    }
-}
-
-static bool is_door_sensor(uint8_t id) {
-    return (id >= 22 && id <= 27);
-}
-
-static hmi_event_type_t analyze_swipe(bool is_flipped) {
+static hmi_event_type_t analyze_swipe(void) {
     if (swipe_len < MIN_SWIPE_LEN) return EVENT_NONE;
 
-    int min_x = 99, max_x = -1;
-    int min_y = 99, max_y = -1;
-    int x_first, y_first, x_last, y_last;
+    int unwrapped_y[MAX_SWIPE_LEN];
+    unwrapped_y[0] = 0;
+    
+    int min_uy = 0, max_uy = 0;
+    int total_rows = active_sensor_count * 4;
 
-    get_xy_from_id(swipe_buffer[0], &x_first, &y_first, is_flipped);
-    get_xy_from_id(swipe_buffer[swipe_len - 1], &x_last, &y_last, is_flipped);
+    for (int i = 0; i < swipe_len - 1; i++) {
+        int y1 = swipe_buffer[i] / 3;
+        int y2 = swipe_buffer[i+1] / 3;
 
-    // 1. Проверка на "прыжки" (разрывы) и вычисление границ (Bounding Box)
-    for (int i = 0; i < swipe_len; i++) {
-        int x, y;
-        get_xy_from_id(swipe_buffer[i], &x, &y, is_flipped);
-        
-        if (x < min_x) min_x = x;
-        if (x > max_x) max_x = x;
-        if (y < min_y) min_y = y;
-        if (y > max_y) max_y = y;
+        int diff = y2 - y1;
+        if (diff < -(total_rows / 2)) diff += total_rows;
+        else if (diff > (total_rows / 2)) diff -= total_rows;
 
-        // Защита от перепрыгивания рядов (например, 0 -> 1 -> 8)
-        if (i > 0) {
-            int prev_x, prev_y;
-            get_xy_from_id(swipe_buffer[i - 1], &prev_x, &prev_y, is_flipped);
-            int dx = abs(x - prev_x);
-            int dy = abs(y - prev_y);
-            
-            // Физический палец не может перескочить через ряд или столбец, 
-            // не задев промежуточный контакт. Если перескочил - жест бракуется.
-            if (dx > 1 || dy > 1) {
-                return EVENT_NONE; 
-            }
+        if (abs(diff) > 1) {
+            ESP_LOGD(TAG, "Отмена: перескок через ряд");
+            return EVENT_NONE; 
+        }
+
+        unwrapped_y[i+1] = unwrapped_y[i] + diff;
+
+        if (unwrapped_y[i+1] < min_uy) min_uy = unwrapped_y[i+1];
+        if (unwrapped_y[i+1] > max_uy) max_uy = unwrapped_y[i+1];
+    }
+
+    int row_span = max_uy - min_uy + 1;
+    int x_first = swipe_buffer[0] % 3;
+    int x_last = swipe_buffer[swipe_len - 1] % 3;
+
+    hmi_event_type_t detected_event = EVENT_NONE;
+
+    if (row_span <= 2) {
+        if (x_first == 0 && x_last == 2) detected_event = EVENT_SWIPE_RIGHT;
+        if (x_first == 2 && x_last == 0) detected_event = EVENT_SWIPE_LEFT;
+    } 
+    else if (row_span >= 3) {
+        int net_y = unwrapped_y[swipe_len - 1] - unwrapped_y[0];
+        if (net_y > 0) detected_event = EVENT_SWIPE_DOWN;
+        if (net_y < 0) detected_event = EVENT_SWIPE_UP;
+    }
+
+    // Инверсия ориентации
+    if (g_panel_inverted && detected_event != EVENT_NONE) {
+        switch (detected_event) {
+            case EVENT_SWIPE_UP:    detected_event = EVENT_SWIPE_DOWN; break;
+            case EVENT_SWIPE_DOWN:  detected_event = EVENT_SWIPE_UP; break;
+            case EVENT_SWIPE_LEFT:  detected_event = EVENT_SWIPE_RIGHT; break;
+            case EVENT_SWIPE_RIGHT: detected_event = EVENT_SWIPE_LEFT; break;
+            default: break;
         }
     }
 
-    int spread_y = max_y - min_y;
-
-    // 2. Горизонтальные свайпы (Влево / Вправо)
-    // Правило: Задеты максимум 2 ряда (spread_y <= 1), движение строго от края до края
-    if (spread_y <= 1) {
-        // ИНВЕРСИЯ: Меняем местами LEFT и RIGHT
-        if (x_first == 0 && x_last == 2) return EVENT_SWIPE_LEFT;
-        if (x_first == 2 && x_last == 0) return EVENT_SWIPE_RIGHT;
-    }
-
-    // 3. Вертикальные свайпы (Вверх / Вниз)
-    // Правило: Задеты 3 и более рядов (spread_y >= 2). 
-    // Пример: 0,3,1,4,2,5,8 -> spread_y равен 2 (ряды 0, 1, 2) -> Это Вниз.
-    if (spread_y >= 2) {
-        if (y_last > y_first) return EVENT_SWIPE_DOWN;
-        if (y_last < y_first) return EVENT_SWIPE_UP;
-    }
-
-    // Если жест не попал ни под одно правило (просто хаотичное касание)
-    return EVENT_NONE;
+    return detected_event;
 }
 
+// ================= ОСНОВНОЙ ТАСК =================
+
 static void mpr121_polling_task(void *pvParameters) {
-    for (int i = 0; i < NUM_SENSORS; i++) {
-        if (mpr121_init(mux_channels[i], MPR121_TOUCH_THRESH, MPR121_RELEASE_THRESH) == ESP_OK) {
-            mpr121_online[i] = true;
-        } else {
-            ESP_LOGE(TAG, "Sensor MPR121 [%d] offline at boot", i);
+    // 1. Динамическое сканирование
+    for (int i = 0; i < MAX_POSSIBLE_SENSORS; i++) {
+        if (mpr121_init(possible_addresses[i], MPR121_TOUCH_THRESH, MPR121_RELEASE_THRESH) == ESP_OK) {
+            active_addresses[active_sensor_count++] = possible_addresses[i];
         }
     }
 
-    uint16_t current_status = 0;
-    uint16_t last_status[NUM_SENSORS] = {0};
-    uint8_t error_strikes[NUM_SENSORS] = {0}; 
+    if (active_sensor_count == 0) {
+        ESP_LOGE(TAG, "Сенсоры не найдены! Остановка таска HMI.");
+        vTaskDelete(NULL);
+    }
 
+    uint32_t last_status = 0;
     int release_cycles = 0; 
     int hold_door_cycles = 0;
     bool ignore_next_release = false; 
-    int reconnect_timer = 0;
-    hmi_msg_t msg;
+    bool palm_rejected = false; 
 
-    // Инициализация для жесткого реал-тайм цикла
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(POLL_RATE_MS);// До цикла while(1)
+    const TickType_t xFrequency = pdMS_TO_TICKS(POLL_RATE_MS);
 
     while (1) {
-        int total_active_touches = 0;
-        bool only_door_sensors_touched = true;
-        // Читаем аппаратный пин (0 - норма, 1 - перевернут аппаратно)
-        // ВАЖНО: Проверьте вашу схему! Если у вас PIN_ORIENTATION_SENSOR = 0 означает "Перевернуто", 
-        // то код будет: bool hw_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 0);
+        // Чтение ориентации из железа и софта
         bool hw_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 1); 
-
-        // Читаем программную настройку из NVS
         settings_lock();
         bool sw_flipped = (sys_settings.touchRotationIndex == 1);
         settings_unlock();
+        g_panel_inverted = hw_flipped ^ sw_flipped;
 
-        // Итоговая ориентация (XOR)
-        bool is_flipped = hw_flipped ^ sw_flipped;
-        
+        uint32_t current_status = 0;
+        int total_active_touches = 0;
+        uint16_t touch_mask = 0;
 
-        for (int i = 0; i < NUM_SENSORS; i++) {
-            if (!mpr121_online[i]) continue; 
-
-            if (mpr121_get_touched(mux_channels[i], &current_status) == ESP_OK) {
-                error_strikes[i] = 0; 
-                
-                for (int bit = 0; bit < 12; bit++) {
-                    if (current_status & (1 << bit)) {
-                        total_active_touches++;
-                        if (!is_door_sensor(get_global_id(i, bit))) {
-                            only_door_sensors_touched = false; 
-                        }
-                    }
-                }
-
-                if (current_status != last_status[i]) {
-                    uint16_t changed_bits = current_status ^ last_status[i];
-                    for (int bit = 0; bit < 12; bit++) {
-                        if ((changed_bits & (1 << bit)) && (current_status & (1 << bit))) {
-                            uint8_t global_id = get_global_id(i, bit);
-                            if (swipe_len < MAX_SWIPE_LEN && !ignore_next_release) {
-                                if (swipe_len == 0 || swipe_buffer[swipe_len - 1] != global_id) {
-                                    swipe_buffer[swipe_len++] = global_id;
-                                }
-                            }
-                        }
-                    }
-                    last_status[i] = current_status;
-                }
-            } else {
-                error_strikes[i]++;
-                if (error_strikes[i] >= 3) {
-                    mpr121_online[i] = false;
-                    swipe_len = 0; // СБРОС стейт-машины жестов при отвале сенсора
-                    msg.type = EVENT_ERROR_SENSOR_OFFLINE;
-                    msg.sensor_index = i;
-                    send_hmi_event(&msg);
+        // Читаем сенсоры
+        for (int i = 0; i < active_sensor_count; i++) {
+            if (mpr121_get_touched(active_addresses[i], &touch_mask) == ESP_OK) {
+                current_status |= ((uint32_t)touch_mask << (i * 12));
+                for(int b = 0; b < 12; b++) {
+                    if (touch_mask & (1 << b)) total_active_touches++;
                 }
             }
         }
 
-        if (total_active_touches > 0 && only_door_sensors_touched) {
+        // --- БЛОКИРОВКА ПАНЕЛИ (MUTE) ---
+        if (!g_panel_enabled) {
+            last_status = current_status;
+            swipe_len = 0;
+            hold_door_cycles = 0;
+            palm_rejected = false;
+            ignore_next_release = false;
+            lock_button_state = false;
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue; 
+        }
+
+        // --- ЛОГИКА ЗАМКА ДВЕРИ ---
+        bool unlock_combo_active = false;
+        if (active_sensor_count == 2) {
+            bool r3_touched = (current_status & 0x00000E00) != 0; 
+            bool r4_touched = (current_status & 0x00007000) != 0; 
+            bool r0_touched = (current_status & 0x00000007) != 0; 
+            bool r7_touched = (current_status & 0x00E00000) != 0; 
+
+            if ((r3_touched && r4_touched) || (r0_touched && r7_touched)) {
+                unlock_combo_active = true;
+            }
+        }
+
+        if (unlock_combo_active) {
             lock_button_state = true;
             hold_door_cycles++;
             if (hold_door_cycles >= (DOOR_UNLOCK_TIME_MS / POLL_RATE_MS)) {
-                msg.type = EVENT_DOOR_UNLOCK;
+                hmi_msg_t msg = {.type = EVENT_DOOR_UNLOCK};
                 send_hmi_event(&msg);
                 hold_door_cycles = 0;
                 ignore_next_release = true; 
                 swipe_len = 0; 
+                palm_rejected = false; 
             }
         } else {
             lock_button_state = false;
             hold_door_cycles = 0; 
         }
 
+        // --- ПРАВИЛО "ЗМЕЙКИ" ---
+        if (total_active_touches > MAX_SWIPE_TOUCHES && !unlock_combo_active) {
+            if (!palm_rejected) {
+                ESP_LOGD(TAG, "Palm rejected!");
+                palm_rejected = true;
+            }
+        }
+
+        // --- ЗАПИСЬ СВАЙПА ---
+        if (current_status != last_status) {
+            uint32_t changed_bits = current_status ^ last_status;
+            for (int bit = 0; bit < (active_sensor_count * 12); bit++) {
+                if ((changed_bits & (1 << bit)) && (current_status & (1 << bit))) {
+                    if (swipe_len < MAX_SWIPE_LEN && !ignore_next_release && !palm_rejected && !unlock_combo_active) {
+                        if (swipe_len == 0 || swipe_buffer[swipe_len - 1] != bit) {
+                            swipe_buffer[swipe_len++] = bit;
+                        }
+                    }
+                }
+            }
+            last_status = current_status;
+        }
+
+        // --- ОБРАБОТКА ОТПУСКАНИЯ ---
         if (total_active_touches == 0) {
             if (ignore_next_release) {
                 ignore_next_release = false;
@@ -221,33 +228,20 @@ static void mpr121_polling_task(void *pvParameters) {
             } else if (swipe_len > 0) {
                 release_cycles++;
                 if (release_cycles >= 3) { 
-                    msg.type = analyze_swipe(is_flipped);
-                    if (msg.type != EVENT_NONE) send_hmi_event(&msg); 
+                    if (!palm_rejected) {
+                        hmi_msg_t msg;
+                        msg.type = analyze_swipe();
+                        if (msg.type != EVENT_NONE) send_hmi_event(&msg); 
+                    }
                     swipe_len = 0;
                     release_cycles = 0;
                 }
             }
+            palm_rejected = false; 
         } else {
             release_cycles = 0;
         }
 
-        reconnect_timer++;
-        if (reconnect_timer >= (5000 / POLL_RATE_MS)) { 
-            reconnect_timer = 0;
-            for (int i = 0; i < NUM_SENSORS; i++) {
-                if (!mpr121_online[i]) {
-                    if (mpr121_init(mux_channels[i], MPR121_TOUCH_THRESH, MPR121_RELEASE_THRESH) == ESP_OK) {
-                        mpr121_online[i] = true;
-                        error_strikes[i] = 0; 
-                        msg.type = EVENT_INFO_SENSOR_RESTORED;
-                        msg.sensor_index = i;
-                        send_hmi_event(&msg);
-                    }
-                }
-            }
-        }
-        
-        // Гарантируем цикл ровно 50 мс, независимо от таймаутов I2C
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -263,15 +257,9 @@ esp_err_t gesture_manager_init(void) {
     gpio_config(&io_conf);
 
     hmi_event_queue = xQueueCreate(10, sizeof(hmi_msg_t));
-    if (!hmi_event_queue) {
-        ESP_LOGE(TAG, "Failed to create HMI queue");
-        return ESP_ERR_NO_MEM;
-    }
+    if (!hmi_event_queue) return ESP_ERR_NO_MEM;
 
-    BaseType_t res = xTaskCreate(mpr121_polling_task, "mpr121_task", 4096, NULL, 6, NULL);
-    if (res != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create MPR polling task");
-        vQueueDelete(hmi_event_queue);
+    if (xTaskCreatePinnedToCore(mpr121_polling_task, "mpr_poll", 4096, NULL, 6, NULL, 1) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
 

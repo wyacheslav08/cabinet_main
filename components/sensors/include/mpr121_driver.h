@@ -39,12 +39,12 @@ extern "C" {
 /**
  * @brief Инициализация MPR121 с учетом настроек автоконфигурации.
  */
-esp_err_t mpr121_init(uint8_t mux_channel, uint8_t touch_thresh, uint8_t release_thresh);
+esp_err_t mpr121_init(uint8_t i2c_addr, uint8_t touch_thresh, uint8_t release_thresh);
 
 /**
  * @brief Чтение 16-битной маски состояния электродов (0..11 биты).
  */
-esp_err_t mpr121_get_touched(uint8_t mux_channel, uint16_t *touched_mask);
+esp_err_t mpr121_get_touched(uint8_t i2c_addr, uint16_t *touched_mask);
 
 #ifdef __cplusplus
 }

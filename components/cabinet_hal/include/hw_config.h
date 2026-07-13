@@ -11,21 +11,18 @@
 #define I2C_MASTER_FREQ_HZ      400000      // 400 кГц (Fast Mode)
 #define I2C_MASTER_TIMEOUT_MS   100
 
-// --- 2. МУЛЬТИПЛЕКСОРЫ I2C (Раздельная аппаратная маршрутизация) ---
+// --- 2. МУЛЬТИПЛЕКСОРЫ I2C И СЕНСОРНЫЕ ПАНЕЛИ ---
 
 // [MUX 1] Мультиплексор климатических датчиков (SHT40)
 #define MUX_ADDR_SENSORS        0x70        // I2C адрес MUX 1
-#define MUX_CH_SHT_MAIN         7           // Канал 0: Основной (возле гитары)
+#define MUX_CH_SHT_MAIN         7           // Канал 0: Основной
 #define MUX_CH_SHT_HUMIDIFIER   6           // Канал 1: Внутри увлажнителя
 #define MUX_CH_SHT_DEHUMIDIFIER 5           // Канал 2: Внутри осушителя
 #define MUX_CH_SHT_EXTERNAL     4           // Канал 3: Внешний (комнатный)
 
-// [MUX 2] Мультиплексор сенсорных панелей двери (MPR121)
-#define MUX_ADDR_TOUCH          0x71        // I2C адрес MUX 2 (пин A0 подтянут к VCC)
-#define MUX_CH_MPR_1            7           // Канал 0: Сенсорная панель 1
-#define MUX_CH_MPR_2            6           // Канал 1: Сенсорная панель 2
-#define MUX_CH_MPR_3            5           // Канал 2: Сенсорная панель 3
-#define MUX_CH_MPR_4            4           // Канал 3: Сенсорная панель 4
+// [СЕНСОРНЫЕ ПАНЕЛИ] Прямое подключение к I2C (без мультиплексора)
+#define MPR121_ADDR_1           0x5A        // Панель 1 (Верхняя, ADDR -> VSS)
+#define MPR121_ADDR_2           0x5C        // Панель 2 (Нижняя, ADDR -> SDA)
 
 // --- АДРЕСА И КОМАНДЫ ДАТЧИКОВ ---
 #define SHT40_I2C_ADDR          0x44        // Адрес SHT40

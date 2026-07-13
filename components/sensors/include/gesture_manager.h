@@ -33,7 +33,12 @@ extern QueueHandle_t hmi_event_queue;
 // [КРИТИЧНО] Функция инициализации
 esp_err_t gesture_manager_init(void);
 
+// ... старый код ...
 bool gesture_is_lock_pressed(void);
+
+// Новые функции управления состоянием панели
+void gesture_set_panel_enabled(bool enabled);
+void gesture_set_panel_inverted(bool inverted);
 
 #ifdef __cplusplus
 }

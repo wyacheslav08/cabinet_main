@@ -1,6 +1,6 @@
 /**
  * @file i2c_manager.c
- * @brief Потокобезопасный драйвер шины I2C и мультиплексоров PCA9548A.
+ * @brief Потокобезопасный драйвер шины I2C (Адаптирован под 1 мультиплексор).
  */
 
 #include "i2c_manager.h"
@@ -13,22 +13,19 @@
 static const char *TAG = "I2C_MGR";
 static SemaphoreHandle_t i2c_mutex = NULL;
 
-// Кэш текущих каналов мультиплексоров (255 = состояние неизвестно)
-static uint8_t current_mux_channel[2] = {255, 255}; 
+// Кэш текущего канала единственного мультиплексора SHT40 (255 = состояние неизвестно)
+static uint8_t current_mux_channel = 255; 
 
 esp_err_t i2c_manager_set_mux(uint8_t mux_addr, uint8_t channel) {
     if (channel > 7) return ESP_ERR_INVALID_ARG;
     
-    int mux_idx = (mux_addr == MUX_ADDR_TOUCH) ? 0 : 1;
-    
     // Оптимизация: не переключаем, если уже на нужном канале
-    if (current_mux_channel[mux_idx] == channel) {
+    if (mux_addr == MUX_ADDR_SENSORS && current_mux_channel == channel) {
         return ESP_OK; 
     }
 
     uint8_t mux_cmd = (1 << channel);
     
-    // Формируем команду в точности как в рабочем тестовом коде
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, (mux_addr << 1) | I2C_MASTER_WRITE, true);
@@ -39,14 +36,18 @@ esp_err_t i2c_manager_set_mux(uint8_t mux_addr, uint8_t channel) {
     i2c_cmd_link_delete(cmd);
                                                
     if (err == ESP_OK) {
-        current_mux_channel[mux_idx] = channel;
+        if (mux_addr == MUX_ADDR_SENSORS) {
+            current_mux_channel = channel;
+        }
         // Даем транзисторам внутри PCA9548A время (2 мс) на физическое переключение
         vTaskDelay(pdMS_TO_TICKS(2)); 
     } else {
-        current_mux_channel[mux_idx] = 255; // Сбрасываем кэш при ошибке
+        if (mux_addr == MUX_ADDR_SENSORS) {
+            current_mux_channel = 255; // Сбрасываем кэш при ошибке
+        }
         ESP_LOGE(TAG, "MUX switch failed (ADDR: 0x%02X, CH: %d, ERR: %s)", mux_addr, channel, esp_err_to_name(err));
         
-        // Безопасный сброс аппаратных буферов контроллера ESP32 (вместо перенастройки пинов)
+        // Безопасный сброс аппаратных буферов контроллера ESP32
         i2c_reset_tx_fifo(I2C_MASTER_NUM);
         i2c_reset_rx_fifo(I2C_MASTER_NUM);
     }
@@ -66,7 +67,7 @@ esp_err_t i2c_manager_init(void) {
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_io_num = I2C_MASTER_SCL_IO,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = I2C_MASTER_FREQ_HZ, // Строго 100 кГц из hw_config.h
+        .master.clk_speed = I2C_MASTER_FREQ_HZ, 
         .clk_flags = 0,
     };
 
@@ -76,8 +77,7 @@ esp_err_t i2c_manager_init(void) {
     err = i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
     
     if (err == ESP_OK) {
-        // [КРИТИЧЕСКИ ВАЖНО] Увеличиваем аппаратный таймаут шины I2C до максимума!
-        // Это предотвратит ложные таймауты, когда RTOS переключает задачи.
+        // [КРИТИЧЕСКИ ВАЖНО] Увеличиваем аппаратный таймаут шины I2C до максимума
         i2c_set_timeout(I2C_MASTER_NUM, 0xFFFFF);
         
         // Даем шине 100 мс на стабилизацию питания после инициализации
