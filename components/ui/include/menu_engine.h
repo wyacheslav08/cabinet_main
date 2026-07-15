@@ -18,8 +18,11 @@ bool menu_engine_is_on_main_screen(void);
 // Принудительный сброс на главный экран (для таймера бездействия)
 void menu_engine_force_main_screen(void);
 
-// НОВАЯ ФУНКЦИЯ: Сигнал об окончании загрузки
+// Сигнал об окончании загрузки
 void menu_engine_boot_complete(void);
+
+// Макрос времени отображения сообщения "Сохранено" (в миллисекундах)
+#define UI_SAVED_POPUP_DURATION_MS 1000 
 
 #ifdef __cplusplus
 }

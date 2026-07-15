@@ -16,7 +16,7 @@
 
 static const char *TAG = "MENU_ENGINE";
 
-// Ссылка на менеджер дисплея для поворота экрана "на лету"
+// Ссылка на менеджер дисплея для поворота экрана и изменения яркости "на лету"
 extern display_handle_t g_display_handle;
 
 // =========================================================================
@@ -41,16 +41,29 @@ typedef enum {
     M_SYS_MAX_SAFE, M_SYS_RES_DIFF, M_SYS_HYSTERESIS, M_SYS_RES_LOW, M_SYS_RES_EMPTY,
 
     // --- Настройки ---
-    M_SET_LOCK_TIME, M_SET_MENU_TIME, M_SET_SCREEN_TIME, M_SET_BTN_HOLD, 
-    M_SET_ROTATION, M_SET_TOUCH_ROT, // <-- Положение экрана и сенсора
-    M_SET_SHT_SENSORS, M_SET_SOUNDS, M_SET_WATER_HEATER,
-    
+    M_SET_SCREEN,          // Новый пункт "Экран"
+    M_SET_SHT_SENSORS, 
+    M_SET_SOUNDS, 
+    M_SET_BTN_HOLD, 
+    M_SET_TOUCH_ROT, 
+    M_SET_WATER_HEATER,
+
+    // --- Внутри "Экран" ---
+    M_SCR_BRIGHTNESS, 
+    M_SCR_TIMEOUT, 
+    M_SCR_ROTATION, 
+    M_SCR_MENU_EXIT, 
+
+    // --- Внутри других настроек ---
     M_SHT_ADJUST, 
     M_SND_DOOR, M_SND_RES, 
     M_HEAT_TOGGLE, M_HEAT_MAX_TEMP, 
 
     // --- Пароль ---
-    M_PASS_TOGGLE, M_PASS_SET, M_PASS_RESET,
+    M_PASS_TOGGLE, 
+    M_PASS_LOCK_TIME,      // Перемещен сюда из настроек
+    M_PASS_SET, 
+    M_PASS_RESET,
 
     M_NODE_COUNT 
 } menu_node_id_t;
@@ -95,17 +108,20 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
     {M_SYS_RES_EMPTY,      M_CLIM_SYS,      NODE_EDIT_INT,    "Порог нет ресурс."},
 
     // Настройки системы
-    {M_SET_LOCK_TIME,      M_SETTINGS,      NODE_EDIT_ENUM,   "Время блокировки"},
-    {M_SET_MENU_TIME,      M_SETTINGS,      NODE_EDIT_ENUM,   "Выход из меню"},
-    {M_SET_SCREEN_TIME,    M_SETTINGS,      NODE_EDIT_ENUM,   "Откл. экрана"},
-    {M_SET_BTN_HOLD,       M_SETTINGS,      NODE_EDIT_INT,    "Удержание замка"},
-    {M_SET_ROTATION,       M_SETTINGS,      NODE_EDIT_ENUM,   "Положение экрана"},
-    {M_SET_TOUCH_ROT,      M_SETTINGS,      NODE_EDIT_ENUM,   "Ориентация сенсора"},
+    {M_SET_SCREEN,         M_SETTINGS,      NODE_FOLDER,      "Экран"},
     {M_SET_SHT_SENSORS,    M_SETTINGS,      NODE_FOLDER,      "Датчики SHT"},
     {M_SET_SOUNDS,         M_SETTINGS,      NODE_FOLDER,      "Звуки"},
+    {M_SET_BTN_HOLD,       M_SETTINGS,      NODE_EDIT_INT,    "Удержание замка"},
+    {M_SET_TOUCH_ROT,      M_SETTINGS,      NODE_EDIT_ENUM,   "Ориентация сенсора"},
     {M_SET_WATER_HEATER,   M_SETTINGS,      NODE_FOLDER,      "Подогрев воды"},
 
-    // Внутри настроек
+    // Внутри "Экран"
+    {M_SCR_BRIGHTNESS,     M_SET_SCREEN,    NODE_EDIT_ENUM,   "Яркость экрана"},
+    {M_SCR_TIMEOUT,        M_SET_SCREEN,    NODE_EDIT_ENUM,   "Отключение экрана"},
+    {M_SCR_ROTATION,       M_SET_SCREEN,    NODE_EDIT_ENUM,   "Положение экрана"},
+    {M_SCR_MENU_EXIT,      M_SET_SCREEN,    NODE_EDIT_ENUM,   "Выход из меню"},
+
+    // Внутри других настроек
     {M_SHT_ADJUST,         M_SET_SHT_SENSORS, NODE_ACTION,    "Корректировка SHT"},
     {M_SND_DOOR,           M_SET_SOUNDS,      NODE_EDIT_TOGGLE, "Дверь"},
     {M_SND_RES,            M_SET_SOUNDS,      NODE_EDIT_TOGGLE, "Ресурсы"},
@@ -114,6 +130,7 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
 
     // Пароль
     {M_PASS_TOGGLE,        M_PASSWORD,      NODE_EDIT_TOGGLE, "Пароль Вкл/Откл"},
+    {M_PASS_LOCK_TIME,     M_PASSWORD,      NODE_EDIT_ENUM,   "Время блокировки"},
     {M_PASS_SET,           M_PASSWORD,      NODE_ACTION,      "Установить пароль"},
     {M_PASS_RESET,         M_PASSWORD,      NODE_ACTION,      "Сброс пароля"}
 };
@@ -129,14 +146,13 @@ typedef enum {
 } engine_state_t;
 
 static engine_state_t current_state = STATE_SPLASH_SCREEN;
-
-//static engine_state_t current_state = STATE_MAIN_SCREEN;
 static menu_node_id_t current_folder_id = M_ROOT;
 static int cursor_idx = 0;
 static int scroll_offset = 0;
 static int edit_value = 0;
 
 // Текстовые списки для Enum-настроек
+static const uint8_t brightness_opts[] = {10, 30, 50, 70, 100};
 static const char* enum_time_opts[] = {"30 сек", "1 мин", "2 мин", "5 мин", "ОТКЛ"};
 static const char* enum_menu_opts[] = {"15 сек", "30 сек", "1 мин", "2 мин", "ОТКЛ"};
 static const char* enum_screen_opts[] = {"30 сек", "1 мин", "5 мин", "10 мин", "ОТКЛ"};
@@ -144,7 +160,7 @@ static const char* enum_rotation_opts[] = {"0°", "90°", "180°", "270°"};
 static const char* enum_touch_opts[] = {"Норма", "Инверсия"};
 
 // =========================================================================
-// 3. ФУНКЦИИ ЧТЕНИЯ/ЗАПИСИ ЗНАЧЕНИЙ (СВЯЗЬ С settings_manager.h)
+// 3. ФУНКЦИИ ЧТЕНИЯ/ЗАПИСИ ЗНАЧЕНИЙ
 // =========================================================================
 
 static void load_edit_value(menu_node_id_t id) {
@@ -161,17 +177,21 @@ static void load_edit_value(menu_node_id_t id) {
         case M_SYS_RES_LOW:     edit_value = sys_settings.resourceLowFaultThreshold; break;
         case M_SYS_RES_EMPTY:   edit_value = sys_settings.resourceEmptyFaultThreshold; break;
         
-        case M_SET_LOCK_TIME:   edit_value = sys_settings.lockTimeIndex; break;
-        case M_SET_MENU_TIME:   edit_value = sys_settings.menuTimeoutOptionIndex; break;
-        case M_SET_SCREEN_TIME: edit_value = sys_settings.screenTimeoutOptionIndex; break;
+        case M_SCR_BRIGHTNESS:  edit_value = sys_settings.screenBrightnessIdx; break;
+        case M_SCR_TIMEOUT:     edit_value = sys_settings.screenTimeoutOptionIndex; break;
+        case M_SCR_ROTATION:    edit_value = sys_settings.screenRotationIndex; break;
+        case M_SCR_MENU_EXIT:   edit_value = sys_settings.menuTimeoutOptionIndex; break;
+
         case M_SET_BTN_HOLD:    edit_value = sys_settings.lockHoldTime / 1000; break;
-        case M_SET_ROTATION:    edit_value = sys_settings.screenRotationIndex; break;
         case M_SET_TOUCH_ROT:   edit_value = sys_settings.touchRotationIndex; break;
         
         case M_SND_DOOR:        edit_value = sys_settings.doorSoundEnabled ? 1 : 0; break;
         case M_SND_RES:         edit_value = sys_settings.waterSilicaSoundEnabled ? 1 : 0; break;
         case M_HEAT_TOGGLE:     edit_value = sys_settings.waterHeaterEnabled ? 1 : 0; break;
         case M_HEAT_MAX_TEMP:   edit_value = sys_settings.waterHeaterMaxTemp; break;
+
+        case M_PASS_TOGGLE:     edit_value = sys_settings.passwordEnabled ? 1 : 0; break;
+        case M_PASS_LOCK_TIME:  edit_value = sys_settings.lockTimeIndex; break;
         default: edit_value = 0; break;
     }
     settings_unlock();
@@ -191,22 +211,27 @@ static void save_edit_value(menu_node_id_t id) {
         case M_SYS_RES_LOW:     sys_settings.resourceLowFaultThreshold = edit_value; break;
         case M_SYS_RES_EMPTY:   sys_settings.resourceEmptyFaultThreshold = edit_value; break;
 
-        case M_SET_LOCK_TIME:   sys_settings.lockTimeIndex = edit_value; break;
-        case M_SET_MENU_TIME:   sys_settings.menuTimeoutOptionIndex = edit_value; break;
-        case M_SET_SCREEN_TIME: sys_settings.screenTimeoutOptionIndex = edit_value; break;
-        case M_SET_BTN_HOLD:    sys_settings.lockHoldTime = edit_value * 1000; break;
-        
-        case M_SET_ROTATION:    
+        case M_SCR_BRIGHTNESS:  
+            sys_settings.screenBrightnessIdx = edit_value; 
+            if (g_display_handle) display_manager_set_brightness(g_display_handle, brightness_opts[edit_value]);
+            break;
+        case M_SCR_TIMEOUT:     sys_settings.screenTimeoutOptionIndex = edit_value; break;
+        case M_SCR_ROTATION:    
             sys_settings.screenRotationIndex = edit_value; 
             if (g_display_handle) display_manager_set_rotation(g_display_handle, edit_value);
             break;
-            
+        case M_SCR_MENU_EXIT:   sys_settings.menuTimeoutOptionIndex = edit_value; break;
+        
+        case M_SET_BTN_HOLD:    sys_settings.lockHoldTime = edit_value * 1000; break;
         case M_SET_TOUCH_ROT:   sys_settings.touchRotationIndex = edit_value; break;
 
         case M_SND_DOOR:        sys_settings.doorSoundEnabled = (edit_value > 0); break;
         case M_SND_RES:         sys_settings.waterSilicaSoundEnabled = (edit_value > 0); break;
         case M_HEAT_TOGGLE:     sys_settings.waterHeaterEnabled = (edit_value > 0); break;
         case M_HEAT_MAX_TEMP:   sys_settings.waterHeaterMaxTemp = edit_value; break;
+
+        case M_PASS_TOGGLE:     sys_settings.passwordEnabled = (edit_value > 0); break;
+        case M_PASS_LOCK_TIME:  sys_settings.lockTimeIndex = edit_value; break;
         default: break;
     }
     settings_unlock();
@@ -214,7 +239,6 @@ static void save_edit_value(menu_node_id_t id) {
     ESP_LOGI(TAG, "Value saved for Node ID %d: %d", id, edit_value);
 }
 
-// Форматирует ТОЛЬКО значение (без заголовка, так как заголовок теперь выводится отдельно)
 static void format_edit_text(menu_node_id_t id, char* buf, size_t max_len) {
     switch (id) {
         case M_CLIM_MANUAL:
@@ -223,22 +247,30 @@ static void format_edit_text(menu_node_id_t id, char* buf, size_t max_len) {
         case M_SYS_DEADZONE:    snprintf(buf, max_len, "%d%%", edit_value); break;
         case M_SYS_MAX_TIME:
         case M_SYS_COOLDOWN:    snprintf(buf, max_len, "%d мин", edit_value); break;
-        case M_SET_LOCK_TIME:   snprintf(buf, max_len, "%s", enum_time_opts[edit_value]); break;
-        case M_SET_MENU_TIME:   snprintf(buf, max_len, "%s", enum_menu_opts[edit_value]); break;
-        case M_SET_SCREEN_TIME: snprintf(buf, max_len, "%s", enum_screen_opts[edit_value]); break;
-        case M_SET_ROTATION:    snprintf(buf, max_len, "%s", enum_rotation_opts[edit_value]); break;
+        
+        case M_SCR_BRIGHTNESS:  snprintf(buf, max_len, "%d%%", brightness_opts[edit_value]); break;
+        case M_SCR_TIMEOUT:     snprintf(buf, max_len, "%s", enum_screen_opts[edit_value]); break;
+        case M_SCR_ROTATION:    snprintf(buf, max_len, "%s", enum_rotation_opts[edit_value]); break;
+        case M_SCR_MENU_EXIT:   snprintf(buf, max_len, "%s", enum_menu_opts[edit_value]); break;
+        
         case M_SET_TOUCH_ROT:   snprintf(buf, max_len, "%s", enum_touch_opts[edit_value]); break;
         case M_SET_BTN_HOLD:    snprintf(buf, max_len, "%d сек", edit_value); break;
+        
         case M_SND_DOOR:
         case M_SND_RES:
-        case M_HEAT_TOGGLE:     snprintf(buf, max_len, "%s", edit_value ? "ВКЛ" : "ОТКЛ"); break;
+        case M_HEAT_TOGGLE:     
+        case M_PASS_TOGGLE:     snprintf(buf, max_len, "%s", edit_value ? "ВКЛ" : "ОТКЛ"); break;
+        
         case M_HEAT_MAX_TEMP:   snprintf(buf, max_len, "%d°C", edit_value); break;
+        case M_PASS_LOCK_TIME:  snprintf(buf, max_len, "%s", enum_time_opts[edit_value]); break;
         default:                snprintf(buf, max_len, "%d", edit_value); break;
     }
 }
 
-static void enforce_edit_limits(menu_node_id_t id) {
+// Новая функция с поддержкой цикличного изменения (Wrap-around)
+static void enforce_edit_limits_circular(menu_node_id_t id, int direction) {
     int min = 0, max = 100;
+    
     switch (id) {
         case M_CLIM_MANUAL:     min = 30; max = 70; break;
         case M_SYS_DEADZONE:    min = 1; max = 10; break;
@@ -251,21 +283,28 @@ static void enforce_edit_limits(menu_node_id_t id) {
         case M_SYS_RES_LOW:     min = 1; max = 10; break;
         case M_SYS_RES_EMPTY:   min = 1; max = 10; break;
         
-        case M_SET_LOCK_TIME:   
-        case M_SET_MENU_TIME:   
-        case M_SET_SCREEN_TIME: min = 0; max = 4; break;
-        case M_SET_ROTATION:    min = 0; max = 3; break;
-        case M_SET_TOUCH_ROT:   min = 0; max = 1; break;
+        case M_SCR_BRIGHTNESS:  min = 0; max = 4; break;
+        case M_SCR_TIMEOUT:     min = 0; max = 4; break;
+        case M_SCR_ROTATION:    min = 0; max = 3; break;
+        case M_SCR_MENU_EXIT:   min = 0; max = 4; break;
+        
         case M_SET_BTN_HOLD:    min = 1; max = 5; break;
+        case M_SET_TOUCH_ROT:   min = 0; max = 1; break;
         
         case M_SND_DOOR:
         case M_SND_RES:
-        case M_HEAT_TOGGLE:     min = 0; max = 1; break;
+        case M_HEAT_TOGGLE:     
+        case M_PASS_TOGGLE:     min = 0; max = 1; break;
+        
         case M_HEAT_MAX_TEMP:   min = 30; max = 85; break;
+        case M_PASS_LOCK_TIME:  min = 0; max = 4; break;
         default: break;
     }
-    if (edit_value < min) edit_value = min;
-    if (edit_value > max) edit_value = max;
+
+    edit_value += direction;
+
+    if (edit_value > max) edit_value = min;
+    else if (edit_value < min) edit_value = max;
 }
 
 // =========================================================================
@@ -301,13 +340,11 @@ static void update_view(void) {
         }
     }
 
-    // Вызываем функцию рендера (без аргументов редактирования, так как для этого есть отдельный экран)
     ui_screens_render_menu(titles_to_render, visible_count, cursor_idx - scroll_offset);
 }
 
 void menu_engine_init(void) {
     current_state = STATE_SPLASH_SCREEN;
-    current_state = STATE_MAIN_SCREEN;
     current_folder_id = M_ROOT;
     cursor_idx = 0;
     scroll_offset = 0;
@@ -336,8 +373,17 @@ void menu_engine_force_main_screen(void) {
 // 5. ОБРАБОТЧИК ЖЕСТОВ
 // =========================================================================
 esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
+    // 1. ПЕРЕХВАТ ТАЙМАУТА - проверяется до всего остального
+    if (event == EVENT_SYSTEM_IDLE_TIMEOUT) {
+        if (!menu_engine_is_on_main_screen()) {
+            menu_engine_force_main_screen();
+        }
+        return ESP_OK;
+    }
+
     // Игнорируем жесты, пока висит экран загрузки
     if (current_state == STATE_SPLASH_SCREEN) return ESP_OK; 
+
     if (current_state == STATE_MAIN_SCREEN) {
         if (event == EVENT_SWIPE_RIGHT || event == EVENT_TAP) {
             current_state = STATE_IN_MENU;
@@ -386,7 +432,7 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
                 
                 char val_buf[32];
                 format_edit_text(selected->id, val_buf, sizeof(val_buf));
-                ui_screens_show_edit(selected->title, val_buf); // Переход на экран редактирования
+                ui_screens_show_edit(selected->title, val_buf);
             }
             else if (selected->type == NODE_ACTION) {
                 ESP_LOGW(TAG, "Action executed: %s", selected->title);
@@ -397,6 +443,7 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
                     float freq = 0;
                     audio_analyze_resonance(&freq);
                 }
+                // На Этапе 3 здесь будут обрабатываться M_SHT_ADJUST, M_PASS_SET и M_PASS_RESET
             }
         }
         
@@ -408,14 +455,12 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
         menu_node_id_t active_id = children[cursor_idx]->id;
 
         if (event == EVENT_SWIPE_UP || event == EVENT_SWIPE_DOWN) {
-            if (event == EVENT_SWIPE_UP) edit_value++;
-            else edit_value--;
-            
-            enforce_edit_limits(active_id);
+            int dir = (event == EVENT_SWIPE_UP) ? 1 : -1;
+            enforce_edit_limits_circular(active_id, dir);
             
             char val_buf[32];
             format_edit_text(active_id, val_buf, sizeof(val_buf));
-            ui_screens_update_edit_value(val_buf); // Обновляем цифру на экране
+            ui_screens_update_edit_value(val_buf);
         }
         else if (event == EVENT_SWIPE_LEFT) {
             current_state = STATE_IN_MENU; // Отмена, возврат в меню
@@ -423,18 +468,14 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
             update_view();
         }
         else if (event == EVENT_SWIPE_RIGHT || event == EVENT_TAP) {
-            save_edit_value(active_id);    // Сохранение и возврат в меню
+            save_edit_value(active_id);    
+            
+            // TODO: Вызов всплывающего окна "Сохранено" (будет реализовано в Этапе 2)
+            
             current_state = STATE_IN_MENU;
             ui_screens_show_menu();
             update_view();
         }
     }
     return ESP_OK;
-
-        if (event == EVENT_SYSTEM_IDLE_TIMEOUT) {
-        if (!menu_engine_is_on_main_screen()) {
-            menu_engine_force_main_screen();
-        }
-        return ESP_OK;
-    }
 }

@@ -11,7 +11,7 @@ extern "C" {
 
 typedef struct {
     uint16_t version;
-    
+
     // --- Общие настройки (GEN_SET) ---
     int targetHumidity;
     uint16_t lockHoldTime;
@@ -22,7 +22,12 @@ typedef struct {
     bool waterSilicaSoundEnabled;
     bool waterHeaterEnabled;
     uint8_t waterHeaterMaxTemp;
-    int password[MAX_PASSWORD_LENGTH];
+    
+    // Новые параметры для Фазы 2
+    uint8_t screenBrightnessIdx;   // Индекс яркости (0=10%, 1=30%, 2=50%, 3=70%, 4=100%)
+    bool passwordEnabled;          // Включена ли защита паролем
+    uint8_t passwordLen;           // Текущая длина пароля (0 = не установлен)
+    int password[MAX_PASSWORD_LENGTH]; // Массив жестов пароля
 
     // --- Логика влажности (HUM_LOG) ---
     float deadZonePercent;

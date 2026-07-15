@@ -39,6 +39,12 @@ esp_err_t settings_reset_to_defaults(void) {
     sys_settings.waterHeaterEnabled = true;
     sys_settings.waterHeaterMaxTemp = 40;
     
+    // Новые параметры (Фаза 2)
+    sys_settings.screenBrightnessIdx = 4; // 100% по умолчанию
+    sys_settings.passwordEnabled = false;
+    sys_settings.passwordLen = 0;
+    memset(sys_settings.password, 0, sizeof(sys_settings.password));
+    
     // Логика
     sys_settings.deadZonePercent = 1.0f;
     sys_settings.minHumidityChangeForTimeout = 1.0f;
