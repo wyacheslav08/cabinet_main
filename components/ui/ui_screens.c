@@ -22,6 +22,7 @@ static lv_obj_t* cont_splash = NULL;
 static lv_obj_t* cont_main = NULL;
 static lv_obj_t* cont_menu = NULL;
 static lv_obj_t* cont_edit = NULL;
+static lv_obj_t* lbl_popup = NULL;
 
 // --- ДОБАВЛЯЕМ ПЕРЕМЕННЫЕ ДЛЯ АНИМАЦИИ ---
 static lv_obj_t* lbl_loading_dots = NULL;
@@ -57,6 +58,33 @@ static void splash_anim_cb(lv_timer_t * timer) {
         case 2: lv_label_set_text(lbl_loading_dots, ".."); break;
         case 3: lv_label_set_text(lbl_loading_dots, "..."); break;
     }
+}
+
+// --- Добавить в начало ui_screens.c к глобальным переменным ---
+LV_FONT_DECLARE(font_cyrillic_8); // Добавляем мелкий шрифт для таблицы
+
+static lv_obj_t* cont_popup = NULL;
+static lv_timer_t* popup_timer = NULL;
+
+static lv_obj_t* cont_sht = NULL;
+static lv_obj_t* sht_labels_name[4];
+static lv_obj_t* sht_labels_data[4][3]; // 0=Факт, 1=Корр.Влаж, 2=Корр.Темп
+
+static lv_obj_t* cont_pass_inst = NULL;
+static lv_obj_t* lbl_pass_inst_status = NULL;
+
+static lv_obj_t* cont_pass_input = NULL;
+static lv_obj_t* lbl_pass_input_val = NULL;
+
+
+// --- Коллбэк для таймера всплывающего окна ---
+static void popup_timer_cb(lv_timer_t * timer) {
+    if (cont_popup) {
+        lv_obj_add_flag(cont_popup, LV_OBJ_FLAG_HIDDEN);
+    }
+    // Ставим таймер на паузу, чтобы он не срабатывал каждую секунду,
+    // но при этом НЕ УДАЛЯЛСЯ из памяти движком LVGL.
+    lv_timer_pause(timer); 
 }
 
 void ui_screens_init(void) {
@@ -205,6 +233,138 @@ void ui_screens_init(void) {
     lv_label_set_text(lbl_edit_hints, "Вверх/Вниз: Изм.\nВлево: Отмена  Вправо: ОК");
     lv_obj_set_style_text_align(lbl_edit_hints, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(lbl_edit_hints, LV_ALIGN_BOTTOM_MID, 0, -5);
+
+
+        // =========================================================================
+    // 4. ЭКРАН ТАБЛИЦЫ SHT
+    // =========================================================================
+    cont_sht = lv_obj_create(screen);
+    lv_obj_set_size(cont_sht, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(cont_sht, lv_color_hex(0x001133), 0);
+    lv_obj_set_style_border_width(cont_sht, 0, 0);
+    lv_obj_set_style_pad_all(cont_sht, 0, 0); // Убрали лишние отступы
+    lv_obj_add_flag(cont_sht, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_scrollbar_mode(cont_sht, LV_SCROLLBAR_MODE_OFF);
+
+    lv_obj_t* lbl_sht_title = lv_label_create(cont_sht);
+    lv_obj_set_style_text_font(lbl_sht_title, &font_cyrillic_12, 0);
+    lv_obj_set_style_text_color(lbl_sht_title, lv_color_hex(0xAAAAAA), 0);
+    lv_label_set_text(lbl_sht_title, "Корректировка SHT");
+    lv_obj_align(lbl_sht_title, LV_ALIGN_TOP_MID, 0, 2);
+
+    // Сетка под 12-й шрифт (Ширина 128: 38 + 42 + 24 + 24)
+    static int32_t col_dsc[] = {38, 42, 24, 24, LV_GRID_TEMPLATE_LAST};
+    static int32_t row_dsc[] = {10, 7, 7, 7, 7, LV_GRID_TEMPLATE_LAST}; // Увеличен интервал строк
+
+    lv_obj_t* grid_sht = lv_obj_create(cont_sht);
+    lv_obj_set_size(grid_sht, lv_pct(100), 115);
+    lv_obj_align(grid_sht, LV_ALIGN_TOP_MID, 0, 20); // Опустили ниже заголовка
+    lv_obj_set_layout(grid_sht, LV_LAYOUT_GRID);
+    lv_obj_set_style_grid_column_dsc_array(grid_sht, col_dsc, 0);
+    lv_obj_set_style_grid_row_dsc_array(grid_sht, row_dsc, 0);
+    lv_obj_set_style_bg_opa(grid_sht, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(grid_sht, 0, 0);
+    lv_obj_set_style_pad_all(grid_sht, 0, 0);
+
+    const char* headers[] = {"Датч", "%/C°", "%+", "C+"};
+    for(int i = 0; i < 4; i++) {
+        lv_obj_t* lbl = lv_label_create(grid_sht);
+        lv_obj_set_style_text_font(lbl, &font_cyrillic_12, 0); // 12-й шрифт
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x00FFFF), 0);
+        lv_label_set_text(lbl, headers[i]);
+        lv_obj_set_grid_cell(lbl, LV_GRID_ALIGN_START, i, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    }
+
+    const char* row_names[] = {"Главн", "Увлаж", "Осуш", "Внешн"};
+    for(int r = 0; r < 4; r++) {
+        sht_labels_name[r] = lv_label_create(grid_sht);
+        lv_obj_set_style_text_font(sht_labels_name[r], &font_cyrillic_12, 0); // 12-й шрифт
+        lv_obj_set_style_pad_all(sht_labels_name[r], 2, 0);
+        lv_label_set_text(sht_labels_name[r], row_names[r]);
+        lv_obj_set_grid_cell(sht_labels_name[r], LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, r+1, 1);
+
+        for(int c = 1; c <= 3; c++) {
+            sht_labels_data[r][c-1] = lv_label_create(grid_sht);
+            lv_obj_set_style_text_font(sht_labels_data[r][c-1], &font_cyrillic_12, 0); // 12-й шрифт
+            lv_obj_set_style_pad_all(sht_labels_data[r][c-1], 2, 0);
+            lv_label_set_text(sht_labels_data[r][c-1], (c==1) ? "--/--" : "0");
+            lv_obj_set_grid_cell(sht_labels_data[r][c-1], LV_GRID_ALIGN_START, c, 1, LV_GRID_ALIGN_CENTER, r+1, 1);
+        }
+    }
+
+    lv_obj_t* lbl_sht_hints = lv_label_create(cont_sht);
+    lv_obj_set_style_text_font(lbl_sht_hints, &font_cyrillic_8, 0);
+    lv_obj_set_style_text_color(lbl_sht_hints, lv_color_hex(0x555555), 0);
+    lv_label_set_text(lbl_sht_hints, "Ручка-выбор  Вверх/Вниз-изм.\n<- Отмена    -> Сохранить");
+    lv_obj_set_style_text_align(lbl_sht_hints, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lbl_sht_hints, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    // =========================================================================
+    // 5. ЭКРАН ИНСТРУКЦИИ ПАРОЛЯ
+    // =========================================================================
+    cont_pass_inst = lv_obj_create(screen);
+    lv_obj_set_size(cont_pass_inst, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(cont_pass_inst, lv_color_hex(0x111111), 0);
+    lv_obj_set_style_border_width(cont_pass_inst, 0, 0);
+    lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* lbl_inst_text = lv_label_create(cont_pass_inst);
+    lv_obj_set_style_text_font(lbl_inst_text, &font_cyrillic_8, 0);
+    lv_label_set_text(lbl_inst_text, "Для создания пароля\nсделайте от 1 до 5 жестов\nпо панели.\nДля сохранения коснитесь\nручки двери.\n\nПроведите ВПРАВО\nчтобы начать.");
+    lv_obj_set_style_text_align(lbl_inst_text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lbl_inst_text, LV_ALIGN_TOP_MID, 0, 10);
+
+    lbl_pass_inst_status = lv_label_create(cont_pass_inst);
+    lv_obj_set_style_text_font(lbl_pass_inst_status, &font_cyrillic_8, 0);
+    lv_obj_set_style_text_color(lbl_pass_inst_status, lv_color_hex(0xFF5555), 0);
+    lv_label_set_text(lbl_pass_inst_status, "Пароль не установлен");
+    lv_obj_align(lbl_pass_inst_status, LV_ALIGN_BOTTOM_MID, 0, -10);
+
+    // =========================================================================
+    // 6. ЭКРАН ВВОДА ПАРОЛЯ
+    // =========================================================================
+    cont_pass_input = lv_obj_create(screen);
+    lv_obj_set_size(cont_pass_input, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(cont_pass_input, lv_color_hex(0x001133), 0);
+    lv_obj_set_style_border_width(cont_pass_input, 0, 0);
+    lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* lbl_pass_title = lv_label_create(cont_pass_input);
+    lv_obj_set_style_text_font(lbl_pass_title, &font_cyrillic_12, 0);
+    lv_obj_set_style_text_color(lbl_pass_title, lv_color_hex(0xAAAAAA), 0);
+    lv_label_set_text(lbl_pass_title, "Введите новый пароль");
+    lv_obj_align(lbl_pass_title, LV_ALIGN_TOP_MID, 0, 10);
+
+    lbl_pass_input_val = lv_label_create(cont_pass_input);
+    lv_obj_set_style_text_font(lbl_pass_input_val, &font_cyrillic_20, 0); // Крупные стрелочки
+    lv_obj_set_style_text_color(lbl_pass_input_val, lv_color_hex(0xFFB800), 0);
+    lv_label_set_text(lbl_pass_input_val, ""); // Например: "v > ^"
+    lv_obj_align(lbl_pass_input_val, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t* lbl_pass_hints = lv_label_create(cont_pass_input);
+    lv_obj_set_style_text_font(lbl_pass_hints, &font_cyrillic_8, 0);
+    lv_obj_set_style_text_color(lbl_pass_hints, lv_color_hex(0x555555), 0);
+    lv_label_set_text(lbl_pass_hints, "Сохранить - коснуться ручки");
+    lv_obj_align(lbl_pass_hints, LV_ALIGN_BOTTOM_MID, 0, -10);
+
+    // =========================================================================
+    // 7. ВСПЛЫВАЮЩЕЕ ОКНО "СОХРАНЕНО" (Поверх всего)
+    // =========================================================================
+    cont_popup = lv_obj_create(screen);
+    lv_obj_set_size(cont_popup, 100, 40);
+    lv_obj_align(cont_popup, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(cont_popup, lv_color_hex(0x00AA00), 0); // Зеленый фон
+    lv_obj_set_style_border_color(cont_popup, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(cont_popup, 2, 0);
+    lv_obj_set_style_radius(cont_popup, 8, 0);
+    lv_obj_add_flag(cont_popup, LV_OBJ_FLAG_HIDDEN); // Скрыто по умолчанию
+    lv_obj_set_scrollbar_mode(cont_popup, LV_SCROLLBAR_MODE_OFF);
+
+    lv_obj_t* lbl_popup = lv_label_create(cont_popup);
+    lv_obj_set_style_text_font(lbl_popup, &font_cyrillic_12, 0);
+    lv_obj_set_style_text_color(lbl_popup, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(lbl_popup, "Сохранено");
+    lv_obj_align(lbl_popup, LV_ALIGN_CENTER, 0, 0);
 }
 
 // ДИНАМИЧЕСКОЕ ПОЗИЦИОНИРОВАНИЕ ГЛАВНОГО ЭКРАНА
@@ -243,8 +403,12 @@ void ui_screens_show_main(void) {
     lv_obj_remove_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+    
+    // Прячем новые экраны Фазы 2
+    if(cont_sht) lv_obj_add_flag(cont_sht, LV_OBJ_FLAG_HIDDEN);
+    if(cont_pass_inst) lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+    if(cont_pass_input) lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
 
-    // Загрузка завершена, убиваем таймер анимации навсегда
     if (splash_timer) {
         lv_timer_delete(splash_timer);
         splash_timer = NULL;
@@ -252,12 +416,16 @@ void ui_screens_show_main(void) {
 }
 
 void ui_screens_show_menu(void) {
-    lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN); // <--- СКРЫВАЕМ SPLASH
+    lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN); 
     lv_obj_add_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+    
+    // Прячем новые экраны Фазы 2
+    if(cont_sht) lv_obj_add_flag(cont_sht, LV_OBJ_FLAG_HIDDEN);
+    if(cont_pass_inst) lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+    if(cont_pass_input) lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
 }
-
 
 void ui_screens_show_edit(const char* title, const char* value_str) {
     lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN);
@@ -267,6 +435,11 @@ void ui_screens_show_edit(const char* title, const char* value_str) {
     lv_obj_add_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+    
+    // Прячем новые экраны Фазы 2
+    if(cont_sht) lv_obj_add_flag(cont_sht, LV_OBJ_FLAG_HIDDEN);
+    if(cont_pass_inst) lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+    if(cont_pass_input) lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
 }
 
 void ui_screens_update_edit_value(const char* value_str) {
@@ -293,7 +466,6 @@ void ui_screens_render_menu(const char* items[5], int count, int selected_idx) {
     }
 }
 
-// В функции ui_screens_update_telemetry заменим логику:
 
 void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g) {
     char s_h_int[8], s_h_frac[8], s_t_int[8], s_t_frac[8];
@@ -346,4 +518,107 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
     if (lbl_temp_unit && lbl_temp_int) {
         lv_obj_align_to(lbl_temp_unit, lbl_temp_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
     }
+}
+
+void ui_screens_show_popup(const char* text) {
+    if (lbl_popup) lv_label_set_text(lbl_popup, text);
+    
+    lv_obj_remove_flag(cont_popup, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(cont_popup); 
+    
+    if (popup_timer) {
+        // Если таймер уже был создан ранее, просто "будим" его и сбрасываем счетчик
+        lv_timer_resume(popup_timer);
+        lv_timer_reset(popup_timer);
+    } else {
+        // Создаем таймер при первом вызове (без repeat_count)
+        popup_timer = lv_timer_create(popup_timer_cb, 1000, NULL);
+    }
+}
+
+void ui_screens_show_sht_table(void) {
+    lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_remove_flag(cont_sht, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_screens_update_sht_table(int selected_row, int edit_mode, 
+                                 float t_main, float h_main, int adj_t_main, int adj_h_main,
+                                 float t_hum, float h_hum, int adj_t_hum, int adj_h_hum,
+                                 float t_deh, float h_deh, int adj_t_deh, int adj_h_deh,
+                                 float t_ext, float h_ext, int adj_t_ext, int adj_h_ext) 
+{
+    char buf_val[16], buf_adj_h[8], buf_adj_t[8];
+
+    float t_arr[4] = {t_main, t_hum, t_deh, t_ext};
+    float h_arr[4] = {h_main, h_hum, h_deh, h_ext};
+    int at_arr[4] = {adj_t_main, adj_t_hum, adj_t_deh, adj_t_ext};
+    int ah_arr[4] = {adj_h_main, adj_h_hum, adj_h_deh, adj_h_ext};
+
+    for(int r = 0; r < 4; r++) {
+        if (t_arr[r] <= -90.0f) snprintf(buf_val, sizeof(buf_val), "--/--");
+        else snprintf(buf_val, sizeof(buf_val), "%.0f/%.0f", h_arr[r], t_arr[r]);
+        lv_label_set_text(sht_labels_data[r][0], buf_val);
+
+        snprintf(buf_adj_h, sizeof(buf_adj_h), "%d", ah_arr[r]);
+        lv_label_set_text(sht_labels_data[r][1], buf_adj_h);
+
+        snprintf(buf_adj_t, sizeof(buf_adj_t), "%d", at_arr[r]);
+        lv_label_set_text(sht_labels_data[r][2], buf_adj_t);
+
+        // --- ЛОГИКА ПОДСВЕТКИ ---
+        bool is_sel_row = (r == selected_row);
+        
+        // 1. Имя датчика (Синий фон, если выбрана его строка)
+        lv_obj_set_style_bg_color(sht_labels_name[r], lv_color_hex(0x0066CC), 0);
+        lv_obj_set_style_bg_opa(sht_labels_name[r], is_sel_row ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(sht_labels_name[r], is_sel_row ? lv_color_hex(0xFFFFFF) : lv_color_hex(0xAAAAAA), 0);
+
+        // 2. Фактические значения (Никогда не подсвечиваются фоном)
+        lv_obj_set_style_bg_opa(sht_labels_data[r][0], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(sht_labels_data[r][0], lv_color_hex(0xAAAAAA), 0);
+
+        // 3. Корректировка Влажности (Оранжевый фон, если курсор на ней)
+        bool is_editing_h = (is_sel_row && edit_mode == 0);
+        lv_obj_set_style_bg_color(sht_labels_data[r][1], lv_color_hex(0xFF6600), 0);
+        lv_obj_set_style_bg_opa(sht_labels_data[r][1], is_editing_h ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(sht_labels_data[r][1], is_editing_h ? lv_color_hex(0xFFFFFF) : lv_color_hex(0xAAAAAA), 0);
+
+        // 4. Корректировка Температуры (Оранжевый фон, если курсор на ней)
+        bool is_editing_t = (is_sel_row && edit_mode == 1);
+        lv_obj_set_style_bg_color(sht_labels_data[r][2], lv_color_hex(0xFF6600), 0);
+        lv_obj_set_style_bg_opa(sht_labels_data[r][2], is_editing_t ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(sht_labels_data[r][2], is_editing_t ? lv_color_hex(0xFFFFFF) : lv_color_hex(0xAAAAAA), 0);
+    }
+}
+
+void ui_screens_show_pass_inst(bool is_not_set) {
+    lv_obj_add_flag(cont_splash, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_main, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_edit, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_sht, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
+
+    if (is_not_set) {
+        lv_label_set_text(lbl_pass_inst_status, "Пароль не установлен");
+        lv_obj_set_style_text_color(lbl_pass_inst_status, lv_color_hex(0xFF5555), 0); // Красный
+    } else {
+        lv_label_set_text(lbl_pass_inst_status, "Пароль установлен");
+        lv_obj_set_style_text_color(lbl_pass_inst_status, lv_color_hex(0x00FF00), 0); // Зеленый
+    }
+
+    lv_obj_remove_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_screens_show_pass_input(const char* gestures_str) {
+    lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
+    
+    lv_label_set_text(lbl_pass_input_val, gestures_str);
+    lv_obj_remove_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
 }

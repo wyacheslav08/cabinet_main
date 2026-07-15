@@ -41,10 +41,8 @@ typedef struct {
     uint8_t resourceEmptyFaultThreshold;
 
     // --- Калибровка датчиков (CALIB) ---
-    int8_t tempOffsetTop;
-    int8_t humOffsetTop;
-    int8_t tempOffsetHum;
-    int8_t humOffsetHum;
+    int8_t sht_temp_adj[4]; // 0=Main, 1=Hum, 2=Deh, 3=Ext
+    int8_t sht_hum_adj[4];
 
     // --- Статистика (STAT) ---
     uint32_t resetCount;

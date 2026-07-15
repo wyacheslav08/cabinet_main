@@ -1,5 +1,7 @@
 #pragma once
 #include "esp_err.h"
+#include "sht40_driver.h" // Для cabinet_climate_data_t
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,6 +22,11 @@ esp_err_t climate_control_init(void);
 
 // Получить текущее состояние (для UI и BLE)
 climate_state_t climate_get_state(void);
+
+#include "sht40_driver.h" // Для cabinet_climate_data_t
+
+// Добавить перед #ifdef __cplusplus
+void climate_get_latest_data(cabinet_climate_data_t *out_data);
 
 #ifdef __cplusplus
 }

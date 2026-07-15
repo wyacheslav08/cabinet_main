@@ -9,6 +9,7 @@
 #include "display_manager.h"
 #include "climate_control.h"
 #include "audio_analyzer.h"
+#include "sht40_driver.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include <stdio.h>
@@ -16,7 +17,6 @@
 
 static const char *TAG = "MENU_ENGINE";
 
-// Ссылка на менеджер дисплея для поворота экрана и изменения яркости "на лету"
 extern display_handle_t g_display_handle;
 
 // =========================================================================
@@ -34,34 +34,28 @@ typedef enum {
     M_ROOT = 0,
     M_CLIMATE, M_ACOUSTIC_TEST, M_SETTINGS, M_PASSWORD, M_FACTORY_RESET,
     
-    // --- Климат ---
     M_CLIM_AUTO, M_CLIM_MANUAL, M_CLIM_GUITAR, M_CLIM_SYS,
     M_GUITAR_LIST, M_GUITAR_WEIGHT_MAN, M_GUITAR_WEIGHT_AUTO, 
     M_SYS_DEADZONE, M_SYS_MIN_CHANGE, M_SYS_MAX_TIME, M_SYS_COOLDOWN, 
     M_SYS_MAX_SAFE, M_SYS_RES_DIFF, M_SYS_HYSTERESIS, M_SYS_RES_LOW, M_SYS_RES_EMPTY,
 
-    // --- Настройки ---
-    M_SET_SCREEN,          // Новый пункт "Экран"
+    M_SET_SCREEN,          
     M_SET_SHT_SENSORS, 
     M_SET_SOUNDS, 
     M_SET_BTN_HOLD, 
     M_SET_TOUCH_ROT, 
     M_SET_WATER_HEATER,
 
-    // --- Внутри "Экран" ---
     M_SCR_BRIGHTNESS, 
     M_SCR_TIMEOUT, 
     M_SCR_ROTATION, 
     M_SCR_MENU_EXIT, 
 
-    // --- Внутри других настроек ---
-    M_SHT_ADJUST, 
     M_SND_DOOR, M_SND_RES, 
     M_HEAT_TOGGLE, M_HEAT_MAX_TEMP, 
 
-    // --- Пароль ---
     M_PASS_TOGGLE, 
-    M_PASS_LOCK_TIME,      // Перемещен сюда из настроек
+    M_PASS_LOCK_TIME,      
     M_PASS_SET, 
     M_PASS_RESET,
 
@@ -75,7 +69,6 @@ typedef struct {
     const char* title;
 } menu_node_t;
 
-// Дерево меню (плоский массив, связи через parent_id)
 static const menu_node_t menu_db[M_NODE_COUNT] = {
     {M_ROOT,               M_ROOT,          NODE_FOLDER,      "Главное меню"},
     
@@ -85,18 +78,15 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
     {M_PASSWORD,           M_ROOT,          NODE_FOLDER,      "4. Пароль"},
     {M_FACTORY_RESET,      M_ROOT,          NODE_ACTION,      "5. Сброс настроек"},
 
-    // Климат
     {M_CLIM_AUTO,          M_CLIMATE,       NODE_ACTION,      "Авто-режим"},
     {M_CLIM_MANUAL,        M_CLIMATE,       NODE_EDIT_INT,    "Ручная настр."},
     {M_CLIM_GUITAR,        M_CLIMATE,       NODE_FOLDER,      "Гитара"},
     {M_CLIM_SYS,           M_CLIMATE,       NODE_FOLDER,      "Системные настр."},
 
-    // Гитара
     {M_GUITAR_LIST,        M_CLIM_GUITAR,   NODE_ACTION,      "Список гитар"},
     {M_GUITAR_WEIGHT_MAN,  M_CLIM_GUITAR,   NODE_EDIT_INT,    "Указать вес"},
     {M_GUITAR_WEIGHT_AUTO, M_CLIM_GUITAR,   NODE_ACTION,      "Взвесить гитару"},
 
-    // Системные настройки климата
     {M_SYS_DEADZONE,       M_CLIM_SYS,      NODE_EDIT_INT,    "Мертвая зона"},
     {M_SYS_MIN_CHANGE,     M_CLIM_SYS,      NODE_EDIT_INT,    "Мин. изменение"},
     {M_SYS_MAX_TIME,       M_CLIM_SYS,      NODE_EDIT_INT,    "Макс. время раб."},
@@ -107,28 +97,23 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
     {M_SYS_RES_LOW,        M_CLIM_SYS,      NODE_EDIT_INT,    "Порог мало ресурс."},
     {M_SYS_RES_EMPTY,      M_CLIM_SYS,      NODE_EDIT_INT,    "Порог нет ресурс."},
 
-    // Настройки системы
     {M_SET_SCREEN,         M_SETTINGS,      NODE_FOLDER,      "Экран"},
-    {M_SET_SHT_SENSORS,    M_SETTINGS,      NODE_FOLDER,      "Датчики SHT"},
+    {M_SET_SHT_SENSORS,    M_SETTINGS,      NODE_ACTION,      "Датчики SHT"},
     {M_SET_SOUNDS,         M_SETTINGS,      NODE_FOLDER,      "Звуки"},
     {M_SET_BTN_HOLD,       M_SETTINGS,      NODE_EDIT_INT,    "Удержание замка"},
     {M_SET_TOUCH_ROT,      M_SETTINGS,      NODE_EDIT_ENUM,   "Ориентация сенсора"},
     {M_SET_WATER_HEATER,   M_SETTINGS,      NODE_FOLDER,      "Подогрев воды"},
 
-    // Внутри "Экран"
     {M_SCR_BRIGHTNESS,     M_SET_SCREEN,    NODE_EDIT_ENUM,   "Яркость экрана"},
     {M_SCR_TIMEOUT,        M_SET_SCREEN,    NODE_EDIT_ENUM,   "Отключение экрана"},
     {M_SCR_ROTATION,       M_SET_SCREEN,    NODE_EDIT_ENUM,   "Положение экрана"},
     {M_SCR_MENU_EXIT,      M_SET_SCREEN,    NODE_EDIT_ENUM,   "Выход из меню"},
 
-    // Внутри других настроек
-    {M_SHT_ADJUST,         M_SET_SHT_SENSORS, NODE_ACTION,    "Корректировка SHT"},
     {M_SND_DOOR,           M_SET_SOUNDS,      NODE_EDIT_TOGGLE, "Дверь"},
     {M_SND_RES,            M_SET_SOUNDS,      NODE_EDIT_TOGGLE, "Ресурсы"},
     {M_HEAT_TOGGLE,        M_SET_WATER_HEATER, NODE_EDIT_TOGGLE, "Подогрев"},
     {M_HEAT_MAX_TEMP,      M_SET_WATER_HEATER, NODE_EDIT_INT,    "Макс. темп."},
 
-    // Пароль
     {M_PASS_TOGGLE,        M_PASSWORD,      NODE_EDIT_TOGGLE, "Пароль Вкл/Откл"},
     {M_PASS_LOCK_TIME,     M_PASSWORD,      NODE_EDIT_ENUM,   "Время блокировки"},
     {M_PASS_SET,           M_PASSWORD,      NODE_ACTION,      "Установить пароль"},
@@ -136,13 +121,16 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
 };
 
 // =========================================================================
-// 2. СОСТОЯНИЕ ДВИЖКА (STATE MACHINE)
+// 2. СОСТОЯНИЕ ДВИЖКА
 // =========================================================================
 typedef enum {
     STATE_SPLASH_SCREEN = -1,
     STATE_MAIN_SCREEN = 0,
     STATE_IN_MENU,
-    STATE_EDITING_VALUE
+    STATE_EDITING_VALUE,
+    STATE_SHT_TABLE,
+    STATE_PASS_INSTRUCT,
+    STATE_PASS_INPUT
 } engine_state_t;
 
 static engine_state_t current_state = STATE_SPLASH_SCREEN;
@@ -151,7 +139,15 @@ static int cursor_idx = 0;
 static int scroll_offset = 0;
 static int edit_value = 0;
 
-// Текстовые списки для Enum-настроек
+// Таблица SHT
+static int sht_cursor_idx = 0; // От 0 до 7
+static int sht_temp_adj[4] = {0};
+static int sht_hum_adj[4] = {0};
+
+// Пароль
+static int temp_pass[5];
+static int temp_pass_len = 0;
+
 static const uint8_t brightness_opts[] = {10, 30, 50, 70, 100};
 static const char* enum_time_opts[] = {"30 сек", "1 мин", "2 мин", "5 мин", "ОТКЛ"};
 static const char* enum_menu_opts[] = {"15 сек", "30 сек", "1 мин", "2 мин", "ОТКЛ"};
@@ -160,9 +156,8 @@ static const char* enum_rotation_opts[] = {"0°", "90°", "180°", "270°"};
 static const char* enum_touch_opts[] = {"Норма", "Инверсия"};
 
 // =========================================================================
-// 3. ФУНКЦИИ ЧТЕНИЯ/ЗАПИСИ ЗНАЧЕНИЙ
+// 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // =========================================================================
-
 static void load_edit_value(menu_node_id_t id) {
     settings_lock();
     switch (id) {
@@ -176,20 +171,16 @@ static void load_edit_value(menu_node_id_t id) {
         case M_SYS_HYSTERESIS:  edit_value = (int)sys_settings.humidityHysteresis; break;
         case M_SYS_RES_LOW:     edit_value = sys_settings.resourceLowFaultThreshold; break;
         case M_SYS_RES_EMPTY:   edit_value = sys_settings.resourceEmptyFaultThreshold; break;
-        
         case M_SCR_BRIGHTNESS:  edit_value = sys_settings.screenBrightnessIdx; break;
         case M_SCR_TIMEOUT:     edit_value = sys_settings.screenTimeoutOptionIndex; break;
         case M_SCR_ROTATION:    edit_value = sys_settings.screenRotationIndex; break;
         case M_SCR_MENU_EXIT:   edit_value = sys_settings.menuTimeoutOptionIndex; break;
-
         case M_SET_BTN_HOLD:    edit_value = sys_settings.lockHoldTime / 1000; break;
         case M_SET_TOUCH_ROT:   edit_value = sys_settings.touchRotationIndex; break;
-        
         case M_SND_DOOR:        edit_value = sys_settings.doorSoundEnabled ? 1 : 0; break;
         case M_SND_RES:         edit_value = sys_settings.waterSilicaSoundEnabled ? 1 : 0; break;
         case M_HEAT_TOGGLE:     edit_value = sys_settings.waterHeaterEnabled ? 1 : 0; break;
         case M_HEAT_MAX_TEMP:   edit_value = sys_settings.waterHeaterMaxTemp; break;
-
         case M_PASS_TOGGLE:     edit_value = sys_settings.passwordEnabled ? 1 : 0; break;
         case M_PASS_LOCK_TIME:  edit_value = sys_settings.lockTimeIndex; break;
         default: edit_value = 0; break;
@@ -210,7 +201,6 @@ static void save_edit_value(menu_node_id_t id) {
         case M_SYS_HYSTERESIS:  sys_settings.humidityHysteresis = (float)edit_value; break;
         case M_SYS_RES_LOW:     sys_settings.resourceLowFaultThreshold = edit_value; break;
         case M_SYS_RES_EMPTY:   sys_settings.resourceEmptyFaultThreshold = edit_value; break;
-
         case M_SCR_BRIGHTNESS:  
             sys_settings.screenBrightnessIdx = edit_value; 
             if (g_display_handle) display_manager_set_brightness(g_display_handle, brightness_opts[edit_value]);
@@ -221,22 +211,18 @@ static void save_edit_value(menu_node_id_t id) {
             if (g_display_handle) display_manager_set_rotation(g_display_handle, edit_value);
             break;
         case M_SCR_MENU_EXIT:   sys_settings.menuTimeoutOptionIndex = edit_value; break;
-        
         case M_SET_BTN_HOLD:    sys_settings.lockHoldTime = edit_value * 1000; break;
         case M_SET_TOUCH_ROT:   sys_settings.touchRotationIndex = edit_value; break;
-
         case M_SND_DOOR:        sys_settings.doorSoundEnabled = (edit_value > 0); break;
         case M_SND_RES:         sys_settings.waterSilicaSoundEnabled = (edit_value > 0); break;
         case M_HEAT_TOGGLE:     sys_settings.waterHeaterEnabled = (edit_value > 0); break;
         case M_HEAT_MAX_TEMP:   sys_settings.waterHeaterMaxTemp = edit_value; break;
-
         case M_PASS_TOGGLE:     sys_settings.passwordEnabled = (edit_value > 0); break;
         case M_PASS_LOCK_TIME:  sys_settings.lockTimeIndex = edit_value; break;
         default: break;
     }
     settings_unlock();
     settings_save(); 
-    ESP_LOGI(TAG, "Value saved for Node ID %d: %d", id, edit_value);
 }
 
 static void format_edit_text(menu_node_id_t id, char* buf, size_t max_len) {
@@ -247,30 +233,24 @@ static void format_edit_text(menu_node_id_t id, char* buf, size_t max_len) {
         case M_SYS_DEADZONE:    snprintf(buf, max_len, "%d%%", edit_value); break;
         case M_SYS_MAX_TIME:
         case M_SYS_COOLDOWN:    snprintf(buf, max_len, "%d мин", edit_value); break;
-        
         case M_SCR_BRIGHTNESS:  snprintf(buf, max_len, "%d%%", brightness_opts[edit_value]); break;
         case M_SCR_TIMEOUT:     snprintf(buf, max_len, "%s", enum_screen_opts[edit_value]); break;
         case M_SCR_ROTATION:    snprintf(buf, max_len, "%s", enum_rotation_opts[edit_value]); break;
         case M_SCR_MENU_EXIT:   snprintf(buf, max_len, "%s", enum_menu_opts[edit_value]); break;
-        
         case M_SET_TOUCH_ROT:   snprintf(buf, max_len, "%s", enum_touch_opts[edit_value]); break;
         case M_SET_BTN_HOLD:    snprintf(buf, max_len, "%d сек", edit_value); break;
-        
         case M_SND_DOOR:
         case M_SND_RES:
         case M_HEAT_TOGGLE:     
         case M_PASS_TOGGLE:     snprintf(buf, max_len, "%s", edit_value ? "ВКЛ" : "ОТКЛ"); break;
-        
         case M_HEAT_MAX_TEMP:   snprintf(buf, max_len, "%d°C", edit_value); break;
         case M_PASS_LOCK_TIME:  snprintf(buf, max_len, "%s", enum_time_opts[edit_value]); break;
         default:                snprintf(buf, max_len, "%d", edit_value); break;
     }
 }
 
-// Новая функция с поддержкой цикличного изменения (Wrap-around)
 static void enforce_edit_limits_circular(menu_node_id_t id, int direction) {
     int min = 0, max = 100;
-    
     switch (id) {
         case M_CLIM_MANUAL:     min = 30; max = 70; break;
         case M_SYS_DEADZONE:    min = 1; max = 10; break;
@@ -282,35 +262,58 @@ static void enforce_edit_limits_circular(menu_node_id_t id, int direction) {
         case M_SYS_HYSTERESIS:  min = 1; max = 10; break;
         case M_SYS_RES_LOW:     min = 1; max = 10; break;
         case M_SYS_RES_EMPTY:   min = 1; max = 10; break;
-        
         case M_SCR_BRIGHTNESS:  min = 0; max = 4; break;
         case M_SCR_TIMEOUT:     min = 0; max = 4; break;
         case M_SCR_ROTATION:    min = 0; max = 3; break;
         case M_SCR_MENU_EXIT:   min = 0; max = 4; break;
-        
         case M_SET_BTN_HOLD:    min = 1; max = 5; break;
         case M_SET_TOUCH_ROT:   min = 0; max = 1; break;
-        
         case M_SND_DOOR:
         case M_SND_RES:
         case M_HEAT_TOGGLE:     
         case M_PASS_TOGGLE:     min = 0; max = 1; break;
-        
         case M_HEAT_MAX_TEMP:   min = 30; max = 85; break;
         case M_PASS_LOCK_TIME:  min = 0; max = 4; break;
         default: break;
     }
-
     edit_value += direction;
-
     if (edit_value > max) edit_value = min;
     else if (edit_value < min) edit_value = max;
+}
+
+static void update_sht_view(void) {
+    // ОБЯЗАТЕЛЬНО {0}, чтобы исключить мусор из ОЗУ при старте
+    cabinet_climate_data_t clim = {0}; 
+    climate_get_latest_data(&clim); 
+
+    int row = sht_cursor_idx / 2;
+    int col = sht_cursor_idx % 2; 
+
+    ui_screens_update_sht_table(
+        row, col,
+        clim.sensors[0].temperature, clim.sensors[0].humidity, sht_temp_adj[0], sht_hum_adj[0],
+        clim.sensors[1].temperature, clim.sensors[1].humidity, sht_temp_adj[1], sht_hum_adj[1],
+        clim.sensors[2].temperature, clim.sensors[2].humidity, sht_temp_adj[2], sht_hum_adj[2],
+        clim.sensors[3].temperature, clim.sensors[3].humidity, sht_temp_adj[3], sht_hum_adj[3]
+    );
+}
+
+static void render_password_string(char* buf, size_t max_len) {
+    buf[0] = '\0';
+    for(int i = 0; i < temp_pass_len; i++) {
+        switch(temp_pass[i]) {
+            case EVENT_SWIPE_UP:    strlcat(buf, "^ ", max_len); break;
+            case EVENT_SWIPE_DOWN:  strlcat(buf, "v ", max_len); break;
+            case EVENT_SWIPE_LEFT:  strlcat(buf, "< ", max_len); break;
+            case EVENT_SWIPE_RIGHT: strlcat(buf, "> ", max_len); break;
+            default: break;
+        }
+    }
 }
 
 // =========================================================================
 // 4. ЛОГИКА ОТОБРАЖЕНИЯ И НАВИГАЦИИ
 // =========================================================================
-
 static int get_children_nodes(menu_node_id_t parent, const menu_node_t* out_nodes[15]) {
     int count = 0;
     for (int i = 0; i < M_NODE_COUNT; i++) {
@@ -339,7 +342,6 @@ static void update_view(void) {
             visible_count++;
         }
     }
-
     ui_screens_render_menu(titles_to_render, visible_count, cursor_idx - scroll_offset);
 }
 
@@ -373,17 +375,16 @@ void menu_engine_force_main_screen(void) {
 // 5. ОБРАБОТЧИК ЖЕСТОВ
 // =========================================================================
 esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
-    // 1. ПЕРЕХВАТ ТАЙМАУТА - проверяется до всего остального
     if (event == EVENT_SYSTEM_IDLE_TIMEOUT) {
-        if (!menu_engine_is_on_main_screen()) {
-            menu_engine_force_main_screen();
-        }
+        if (!menu_engine_is_on_main_screen()) menu_engine_force_main_screen();
         return ESP_OK;
     }
 
-    // Игнорируем жесты, пока висит экран загрузки
     if (current_state == STATE_SPLASH_SCREEN) return ESP_OK; 
 
+    // =========================================================
+    // ГЛАВНЫЙ ЭКРАН И МЕНЮ
+    // =========================================================
     if (current_state == STATE_MAIN_SCREEN) {
         if (event == EVENT_SWIPE_RIGHT || event == EVENT_TAP) {
             current_state = STATE_IN_MENU;
@@ -435,20 +436,49 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
                 ui_screens_show_edit(selected->title, val_buf);
             }
             else if (selected->type == NODE_ACTION) {
-                ESP_LOGW(TAG, "Action executed: %s", selected->title);
                 if (selected->id == M_FACTORY_RESET) {
                     settings_reset_to_defaults();
                     esp_restart();
-                } else if (selected->id == M_ACOUSTIC_TEST) {
+                } 
+                else if (selected->id == M_ACOUSTIC_TEST) {
                     float freq = 0;
                     audio_analyze_resonance(&freq);
                 }
-                // На Этапе 3 здесь будут обрабатываться M_SHT_ADJUST, M_PASS_SET и M_PASS_RESET
+                else if (selected->id == M_SET_SHT_SENSORS) {
+                    current_state = STATE_SHT_TABLE;
+                    sht_cursor_idx = 0;
+                    settings_lock();
+                    for(int i=0; i<4; i++) {
+                        sht_temp_adj[i] = sys_settings.sht_temp_adj[i];
+                        sht_hum_adj[i] = sys_settings.sht_hum_adj[i];
+                    }
+                    settings_unlock();
+                    ui_screens_show_sht_table();
+                    update_sht_view();
+                } 
+                else if (selected->id == M_PASS_SET) {
+                    current_state = STATE_PASS_INSTRUCT;
+                    settings_lock();
+                    bool is_not_set = (sys_settings.passwordLen == 0);
+                    settings_unlock();
+                    ui_screens_show_pass_inst(is_not_set);
+                }
+                else if (selected->id == M_PASS_RESET) {
+                    settings_lock();
+                    sys_settings.passwordLen = 0;
+                    sys_settings.passwordEnabled = false;
+                    settings_unlock();
+                    settings_save();
+                    ui_screens_show_popup("Пароль сброшен");
+                }
             }
         }
-        
         if (current_state == STATE_IN_MENU) update_view();
     }
+    
+    // =========================================================
+    // РЕДАКТИРОВАНИЕ ОБЫЧНЫХ ЗНАЧЕНИЙ
+    // =========================================================
     else if (current_state == STATE_EDITING_VALUE) {
         const menu_node_t* children[15];
         get_children_nodes(current_folder_id, children);
@@ -463,19 +493,105 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
             ui_screens_update_edit_value(val_buf);
         }
         else if (event == EVENT_SWIPE_LEFT) {
-            current_state = STATE_IN_MENU; // Отмена, возврат в меню
+            current_state = STATE_IN_MENU; 
             ui_screens_show_menu();
             update_view();
         }
         else if (event == EVENT_SWIPE_RIGHT || event == EVENT_TAP) {
             save_edit_value(active_id);    
-            
-            // TODO: Вызов всплывающего окна "Сохранено" (будет реализовано в Этапе 2)
+            ui_screens_show_popup("Сохранено");
             
             current_state = STATE_IN_MENU;
             ui_screens_show_menu();
             update_view();
         }
     }
+    
+    // =========================================================
+    // ТАБЛИЦА SHT
+    // =========================================================
+    else if (current_state == STATE_SHT_TABLE) {
+        int row = sht_cursor_idx / 2;
+        int col = sht_cursor_idx % 2;
+
+        if (event == EVENT_FIFTH_BTN_PRESS) {
+            sht_cursor_idx = (sht_cursor_idx + 1) % 8;
+            update_sht_view();
+        }
+        else if (event == EVENT_SWIPE_UP) {
+            if (col == 0) sht_hum_adj[row]++;
+            else sht_temp_adj[row]++;
+            update_sht_view();
+        }
+        else if (event == EVENT_SWIPE_DOWN) {
+            if (col == 0) sht_hum_adj[row]--;
+            else sht_temp_adj[row]--;
+            update_sht_view();
+        }
+        else if (event == EVENT_SWIPE_LEFT) {
+            current_state = STATE_IN_MENU; 
+            ui_screens_show_menu(); 
+            update_view();
+        }
+        else if (event == EVENT_SWIPE_RIGHT) {
+            settings_lock();
+            for(int i=0; i<4; i++) {
+                sys_settings.sht_hum_adj[i] = sht_hum_adj[i];
+                sys_settings.sht_temp_adj[i] = sht_temp_adj[i];
+            }
+            settings_unlock();
+            settings_save();
+            
+            ui_screens_show_popup("Сохранено");
+            current_state = STATE_IN_MENU; 
+            ui_screens_show_menu();
+            update_view();
+        }
+    }
+
+    // =========================================================
+    // ПАРОЛЬ
+    // =========================================================
+    else if (current_state == STATE_PASS_INSTRUCT) {
+        if (event == EVENT_SWIPE_RIGHT) {
+            current_state = STATE_PASS_INPUT;
+            temp_pass_len = 0;
+            ui_screens_show_pass_input("");
+        } else if (event == EVENT_SWIPE_LEFT) {
+            current_state = STATE_IN_MENU;
+            ui_screens_show_menu();
+            update_view();
+        }
+    }
+    else if (current_state == STATE_PASS_INPUT) {
+        if (event == EVENT_SWIPE_UP || event == EVENT_SWIPE_DOWN || event == EVENT_SWIPE_LEFT || event == EVENT_SWIPE_RIGHT) {
+            if (temp_pass_len < 5) {
+                temp_pass[temp_pass_len++] = event;
+                char buf[32];
+                render_password_string(buf, sizeof(buf));
+                ui_screens_show_pass_input(buf);
+            }
+        } 
+        else if (event == EVENT_FIFTH_BTN_PRESS) { 
+            if (temp_pass_len > 0) {
+                settings_lock();
+                sys_settings.passwordLen = temp_pass_len;
+                for(int i=0; i<temp_pass_len; i++) sys_settings.password[i] = temp_pass[i];
+                sys_settings.passwordEnabled = true;
+                settings_unlock();
+                settings_save();
+                ui_screens_show_popup("Сохранено");
+            }
+            current_state = STATE_IN_MENU;
+            ui_screens_show_menu();
+            update_view();
+        } 
+        else if (event == EVENT_SWIPE_LEFT && temp_pass_len == 0) {
+           current_state = STATE_IN_MENU;
+           ui_screens_show_menu();
+           update_view();
+        }
+    }
+
     return ESP_OK;
 }

@@ -44,6 +44,9 @@ esp_err_t settings_reset_to_defaults(void) {
     sys_settings.passwordEnabled = false;
     sys_settings.passwordLen = 0;
     memset(sys_settings.password, 0, sizeof(sys_settings.password));
+
+    memset(sys_settings.sht_temp_adj, 0, 4);
+    memset(sys_settings.sht_hum_adj, 0, 4);
     
     // Логика
     sys_settings.deadZonePercent = 1.0f;

@@ -168,7 +168,9 @@ static void mpr121_polling_task(void *pvParameters) {
             continue; 
         }
 
-        // --- ЛОГИКА ЗАМКА ДВЕРИ ---
+        // --- В файле gesture_manager.c найди блок "ЛОГИКА ЗАМКА ДВЕРИ" и замени его ---
+
+        // --- ЛОГИКА "ПЯТОЙ КНОПКИ" (Ручка двери) ---
         bool unlock_combo_active = false;
         if (active_sensor_count == 2) {
             bool r3_touched = (current_status & 0x00000E00) != 0; 
@@ -184,8 +186,16 @@ static void mpr121_polling_task(void *pvParameters) {
         if (unlock_combo_active) {
             lock_button_state = true;
             hold_door_cycles++;
+            
+            // Отправляем мгновенное событие при первом касании (для навигации в меню)
+            if (hold_door_cycles == 1) {
+                hmi_msg_t msg = {.type = EVENT_FIFTH_BTN_PRESS};
+                send_hmi_event(&msg);
+            }
+
+            // Отправляем событие удержания (по таймеру из настроек)
             if (hold_door_cycles >= (DOOR_UNLOCK_TIME_MS / POLL_RATE_MS)) {
-                hmi_msg_t msg = {.type = EVENT_DOOR_UNLOCK};
+                hmi_msg_t msg = {.type = EVENT_FIFTH_BTN_HOLD};
                 send_hmi_event(&msg);
                 hold_door_cycles = 0;
                 ignore_next_release = true; 

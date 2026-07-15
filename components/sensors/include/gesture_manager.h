@@ -15,7 +15,8 @@ typedef enum {
     EVENT_SWIPE_LEFT,
     EVENT_SWIPE_RIGHT,
     EVENT_TAP,
-    EVENT_DOOR_UNLOCK,
+    EVENT_FIFTH_BTN_PRESS,     // <--- Мгновенное касание "Пятой кнопки"
+    EVENT_FIFTH_BTN_HOLD,      // <--- Долгое удержание "Пятой кнопки"
     EVENT_ERROR_SENSOR_OFFLINE,
     EVENT_INFO_SENSOR_RESTORED,
     EVENT_SYSTEM_IDLE_TIMEOUT,

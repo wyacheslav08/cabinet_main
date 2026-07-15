@@ -11,6 +11,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "menu_engine.h"
 
 // Аппаратные абстракции и настройки
 #include "hw_config.h"
@@ -46,6 +47,7 @@ static esp_err_t system_nvs_init(void) {
  * @brief Задача-маршрутизатор HMI. Читает жесты от MPR121 и передает в UI.
  * Привязана к Core 0 (вместе с LVGL) для мгновенного отклика.
  */
+// 2. Найди задачу hmi_router_task и обнови перехватчик:
 static void hmi_router_task(void *pvParameters) {
     hmi_msg_t msg;
     ESP_LOGI(TAG, "HMI Router Task started on Core 0");
@@ -53,32 +55,42 @@ static void hmi_router_task(void *pvParameters) {
     while (1) {
         if (xQueueReceive(hmi_event_queue, &msg, portMAX_DELAY) == pdTRUE) {
             
-            // Если это просто жест - отправляем в LVGL
-            if (msg.type != EVENT_DOOR_UNLOCK && g_display_handle != NULL) {
+            // Если это просто жест - отправляем в графический движок (LVGL)
+            if (msg.type != EVENT_FIFTH_BTN_HOLD && g_display_handle != NULL) {
                 display_manager_process_gesture(g_display_handle, msg.type);
             }
 
-            // Экстренное событие: ОТКРЫТИЕ ЗАМКА
-            if (msg.type == EVENT_DOOR_UNLOCK) {
-                ESP_LOGW(TAG, "!!! DOOR UNLOCK COMMAND !!!");
+            // =================================================================
+            // СИСТЕМА БЕЗОПАСНОСТИ: АКТИВАЦИЯ ЗАМКА ДВЕРИ
+            // =================================================================
+            // Срабатывает ТОЛЬКО по долгому удержанию Пятой кнопки И ТОЛЬКО на Главном экране!
+            if (msg.type == EVENT_FIFTH_BTN_HOLD) {
                 
-                // 1. Аппаратно "глушим" сенсорную панель
-                gesture_set_panel_enabled(false);
-                
-                // 2. Открываем замок (Вызов твоей функции ШИМ или GPIO)
-                // pwm_set_servo_angle(90); // Или gpio_set_level(PIN_SOLENOID_DOOR, 1);
-                
-                // 3. Ждем время удержания замка
-                vTaskDelay(pdMS_TO_TICKS(2000));
-                
-                // 4. Закрываем замок
-                // pwm_set_servo_angle(0); // Или gpio_set_level(PIN_SOLENOID_DOOR, 0);
-                
-                // 5. Ждем затухания ЭМИ индуктивности катушки
-                vTaskDelay(pdMS_TO_TICKS(200));
-                
-                // 6. Снова включаем панель
-                gesture_set_panel_enabled(true);
+                if (menu_engine_is_on_main_screen()) {
+                    ESP_LOGW(TAG, "!!! DOOR UNLOCK COMMAND EXECUTED !!!");
+                    
+                    // 1. Аппаратно "глушим" сенсорную панель от ложных срабатываний
+                    gesture_set_panel_enabled(false);
+                    
+                    // 2. Открываем замок (Подаем ток на соленоид)
+                    // pwm_set_servo_angle(90); или gpio_set_level(PIN_SOLENOID_DOOR, 1);
+                    
+                    // 3. Ждем время удержания замка
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    
+                    // 4. ЗАКРЫВАЕМ ЗАМОК (Снимаем ток)
+                    // pwm_set_servo_angle(0); или gpio_set_level(PIN_SOLENOID_DOOR, 0);
+                    
+                    // 5. Ждем затухания ЭМИ индуктивности катушки
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    
+                    // 6. Снова включаем панель
+                    gesture_set_panel_enabled(true);
+                } else {
+                    // Если мы в меню, игнорируем удержание, так как Пятая кнопка 
+                    // используется там только для коротких кликов (PRESS)
+                    ESP_LOGI(TAG, "Fifth button held, but not on Main Screen. Hardware unlock blocked.");
+                }
             }
         }
     }
