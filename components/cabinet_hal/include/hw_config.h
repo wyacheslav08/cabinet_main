@@ -101,3 +101,5 @@
 #define PIN_MOSFET_DEHUM_FAN    0xF2        // Вентилятор осушителя   -> Gateway
 #define PIN_MOSFET_EXHAUST_FAN  0xF3        // Вентилятор вытяжки     -> Gateway
 #define PIN_SOLENOID_DOOR       0xF4        // Электромагнитный замок -> Gateway
+
+#define PIN_RESET_BTN           0           // Аппаратная кнопка сброса пароля (BOOT на ESP32)

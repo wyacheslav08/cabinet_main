@@ -20,6 +20,8 @@ typedef enum {
     EVENT_ERROR_SENSOR_OFFLINE,
     EVENT_INFO_SENSOR_RESTORED,
     EVENT_SYSTEM_IDLE_TIMEOUT,
+    EVENT_SYSTEM_LOCK,
+    EVENT_HARDWARE_PASS_RESET,
 } hmi_event_type_t;
 
 // Структура сообщения для очереди

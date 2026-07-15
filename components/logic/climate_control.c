@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "uart_link.h"
+#include "menu_engine.h"
 
 static const char *TAG = "CLIMATE_CTRL";
 
@@ -42,12 +43,15 @@ static void climate_control_task(void *pvParameters) {
         .is_guitar_present = false,
         .wifi_rssi_percent = 0,
         .is_ble_connected = false,
-        .is_locked = true
+        // Инициализируем нулем, реальный статус получим в цикле
+        .is_locked = false 
     };
 
     while (1) {
         // 1. Опрос датчиков (ЗАНИМАЕТ 40 мс)
         sht40_read_all(&climate_data);
+        // --- Получаем реальный статус блокировки экрана ---
+        ui_data.is_locked = menu_engine_is_locked();
         
         // 2. БЕЗОПАСНОЕ СОХРАНЕНИЕ ДЛЯ МЕНЮ (Мгновенно, без блокировки LVGL)
         xSemaphoreTake(climate_mutex, portMAX_DELAY);

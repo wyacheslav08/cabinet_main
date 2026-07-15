@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "menu_engine.h"
+#include "driver/gpio.h"
 
 // Аппаратные абстракции и настройки
 #include "hw_config.h"
@@ -29,6 +30,40 @@ static const char *TAG = "CABINET_MAIN";
 
 // Глобальный хэндл дисплея
 display_handle_t g_display_handle = NULL;
+
+/**
+ * @brief Задача мониторинга аппаратной кнопки сброса пароля (10 секунд удержания)
+ */
+static void hardware_reset_task(void *pvParameters) {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << PIN_RESET_BTN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE, // Кнопка замыкает пин на землю (GND)
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);
+
+    int hold_time_ms = 0;
+
+    while (1) {
+        // Если кнопка нажата (0, так как подтяжка к питанию)
+        if (gpio_get_level(PIN_RESET_BTN) == 0) {
+            hold_time_ms += 100;
+            
+            // Если удерживаем ровно 10 секунд (10000 мс)
+            if (hold_time_ms == 10000) {
+                hmi_msg_t msg = {.type = EVENT_HARDWARE_PASS_RESET};
+                xQueueSend(hmi_event_queue, &msg, 0);
+            }
+        } else {
+            hold_time_ms = 0; // Сброс таймера, если отпустили раньше времени
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100)); // Опрос каждые 100 мс
+    }
+    vTaskDelete(NULL);
+}
 
 /**
  * @brief Инициализация NVS Flash (Критично для настроек).
@@ -130,7 +165,11 @@ void app_main(void) {
         NULL, 
         0
     );
+
     configASSERT(res == pdPASS);
+
+    // Запуск мониторинга кнопки аппаратного сброса
+    xTaskCreatePinnedToCore(hardware_reset_task, "hw_reset", 2048, NULL, 2, NULL, 1);
 
     ESP_LOGI(TAG, "=== BOOT COMPLETE. SCHEDULER RUNNING. ===");
 

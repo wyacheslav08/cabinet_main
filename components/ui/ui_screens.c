@@ -74,6 +74,7 @@ static lv_obj_t* cont_pass_inst = NULL;
 static lv_obj_t* lbl_pass_inst_status = NULL;
 
 static lv_obj_t* cont_pass_input = NULL;
+static lv_obj_t* lbl_pass_title = NULL;
 static lv_obj_t* lbl_pass_input_val = NULL;
 
 
@@ -329,7 +330,7 @@ void ui_screens_init(void) {
     lv_obj_set_style_border_width(cont_pass_input, 0, 0);
     lv_obj_add_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t* lbl_pass_title = lv_label_create(cont_pass_input);
+    lbl_pass_title = lv_label_create(cont_pass_input);
     lv_obj_set_style_text_font(lbl_pass_title, &font_cyrillic_12, 0);
     lv_obj_set_style_text_color(lbl_pass_title, lv_color_hex(0xAAAAAA), 0);
     lv_label_set_text(lbl_pass_title, "Введите новый пароль");
@@ -616,9 +617,12 @@ void ui_screens_show_pass_inst(bool is_not_set) {
     lv_obj_remove_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
 }
 
-void ui_screens_show_pass_input(const char* gestures_str) {
+void ui_screens_show_pass_input(const char* title, const char* gestures_str) {
     lv_obj_add_flag(cont_pass_inst, LV_OBJ_FLAG_HIDDEN);
     
+    // Обновляем заголовок и введенные жесты
+    lv_label_set_text(lbl_pass_title, title);
     lv_label_set_text(lbl_pass_input_val, gestures_str);
+    
     lv_obj_remove_flag(cont_pass_input, LV_OBJ_FLAG_HIDDEN);
 }

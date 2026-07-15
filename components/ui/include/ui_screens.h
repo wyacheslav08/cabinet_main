@@ -45,7 +45,7 @@ void ui_screens_update_sht_table(int selected_row, int edit_mode,
 
 // Экраны пароля
 void ui_screens_show_pass_inst(bool is_not_set); // is_not_set = true покажет "Пароль не установлен"
-void ui_screens_show_pass_input(const char* gestures_str); // gestures_str - строка со стрелочками
+void ui_screens_show_pass_input(const char* title, const char* gestures_str); // gestures_str - строка со стрелочками
 
 #ifdef __cplusplus
 }

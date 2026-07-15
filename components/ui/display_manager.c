@@ -21,6 +21,8 @@
 #include "esp_timer.h" 
 #include "settings_manager.h" 
 
+static bool is_lock_event_sent = false; // таймер пароля
+
 // Глобальная переменная для времени последней активности
 static uint32_t last_activity_time_ms = 0;
 static bool is_timeout_event_sent = false;
@@ -90,6 +92,17 @@ static uint32_t get_screen_timeout_ms(int index) {
     }
 }
 
+// конвертер времени
+static uint32_t get_lock_timeout_ms(int index) {
+    switch(index) {
+        case 0: return 30000;  // 30 сек
+        case 1: return 60000;  // 1 мин
+        case 2: return 120000; // 2 мин
+        case 3: return 300000; // 5 мин
+        default: return 0;     // ОТКЛ
+    }
+}
+
 // Функция для таймера
 static void inactivity_timer_cb(void* arg) {
     display_handle_t handle = (display_handle_t)arg;
@@ -98,25 +111,30 @@ static void inactivity_timer_cb(void* arg) {
     settings_lock();
     uint32_t m_timeout = get_menu_timeout_ms(sys_settings.menuTimeoutOptionIndex);
     uint32_t s_timeout = get_screen_timeout_ms(sys_settings.screenTimeoutOptionIndex);
+    uint32_t l_timeout = get_lock_timeout_ms(sys_settings.lockTimeIndex);
+    bool pass_enabled = sys_settings.passwordEnabled;
     settings_unlock();
 
     uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000ULL);
     uint32_t idle_time = current_time - last_activity_time_ms;
 
-    // Отправляем событие ТОЛЬКО ОДИН РАЗ
-    if (m_timeout > 0 && idle_time >= m_timeout) {
-        if (!is_timeout_event_sent) {
-            hmi_msg_t msg = { .type = 9 /* EVENT_SYSTEM_IDLE_TIMEOUT */, .sensor_index = 0 };
-            xQueueSend(hmi_event_queue, &msg, 0);
-            is_timeout_event_sent = true; // Блокируем спам в очередь
-        }
+    // 1. Выход из меню
+    if (m_timeout > 0 && idle_time >= m_timeout && !is_timeout_event_sent) {
+        hmi_msg_t msg = { .type = EVENT_SYSTEM_IDLE_TIMEOUT, .sensor_index = 0 };
+        xQueueSend(hmi_event_queue, &msg, 0);
+        is_timeout_event_sent = true; 
     }
 
-    // Отключение экрана
-    if (s_timeout > 0 && idle_time >= s_timeout) {
-        if (handle->is_power_on) {
-            display_manager_set_power(handle, false);
-        }
+    // 2. Блокировка паролем
+    if (pass_enabled && l_timeout > 0 && idle_time >= l_timeout && !is_lock_event_sent) {
+        hmi_msg_t msg = { .type = EVENT_SYSTEM_LOCK, .sensor_index = 0 };
+        xQueueSend(hmi_event_queue, &msg, 0);
+        is_lock_event_sent = true; 
+    }
+
+    // 3. Отключение экрана
+    if (s_timeout > 0 && idle_time >= s_timeout && handle->is_power_on) {
+        display_manager_set_power(handle, false);
     }
 }
 
@@ -255,6 +273,7 @@ esp_err_t display_manager_process_gesture(display_handle_t handle, hmi_event_typ
     if (event != EVENT_SYSTEM_IDLE_TIMEOUT) {
         last_activity_time_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
         is_timeout_event_sent = false;
+        is_lock_event_sent = false;
 
         // Если экран был погашен, ЛЮБОЙ физический жест включает его обратно
         if (!handle->is_power_on) {

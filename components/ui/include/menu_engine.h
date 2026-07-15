@@ -23,6 +23,8 @@ void menu_engine_boot_complete(void);
 
 // Макрос времени отображения сообщения "Сохранено" (в миллисекундах)
 #define UI_SAVED_POPUP_DURATION_MS 1000 
+// Узнать, заблокирован ли сейчас экран (для иконки)
+bool menu_engine_is_locked(void);
 
 #ifdef __cplusplus
 }

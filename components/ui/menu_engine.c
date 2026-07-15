@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char *TAG = "MENU_ENGINE";
+static const char __attribute__((unused)) *TAG = "MENU_ENGINE";
 
 extern display_handle_t g_display_handle;
 
@@ -71,7 +71,6 @@ typedef struct {
 
 static const menu_node_t menu_db[M_NODE_COUNT] = {
     {M_ROOT,               M_ROOT,          NODE_FOLDER,      "Главное меню"},
-    
     {M_CLIMATE,            M_ROOT,          NODE_FOLDER,      "1. Климат"},
     {M_ACOUSTIC_TEST,      M_ROOT,          NODE_ACTION,      "2. Акустич. тест"},
     {M_SETTINGS,           M_ROOT,          NODE_FOLDER,      "3. Настройки"},
@@ -121,7 +120,7 @@ static const menu_node_t menu_db[M_NODE_COUNT] = {
 };
 
 // =========================================================================
-// 2. СОСТОЯНИЕ ДВИЖКА
+// 2. СОСТОЯНИЕ ДВИЖКА (STATE MACHINE)
 // =========================================================================
 typedef enum {
     STATE_SPLASH_SCREEN = -1,
@@ -130,7 +129,8 @@ typedef enum {
     STATE_EDITING_VALUE,
     STATE_SHT_TABLE,
     STATE_PASS_INSTRUCT,
-    STATE_PASS_INPUT
+    STATE_PASS_INPUT,
+    STATE_PASS_CHECK     // <--- ДОБАВЛЕНО СОСТОЯНИЕ ПРОВЕРКИ ПАРОЛЯ
 } engine_state_t;
 
 static engine_state_t current_state = STATE_SPLASH_SCREEN;
@@ -139,12 +139,14 @@ static int cursor_idx = 0;
 static int scroll_offset = 0;
 static int edit_value = 0;
 
-// Таблица SHT
-static int sht_cursor_idx = 0; // От 0 до 7
+static bool is_system_locked = false; // Флаг блокировки экрана
+
+// Данные для таблицы SHT
+static int sht_cursor_idx = 0; 
 static int sht_temp_adj[4] = {0};
 static int sht_hum_adj[4] = {0};
 
-// Пароль
+// Данные для ввода пароля
 static int temp_pass[5];
 static int temp_pass_len = 0;
 
@@ -158,6 +160,11 @@ static const char* enum_touch_opts[] = {"Норма", "Инверсия"};
 // =========================================================================
 // 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // =========================================================================
+
+bool menu_engine_is_locked(void) {
+    return is_system_locked;
+}
+
 static void load_edit_value(menu_node_id_t id) {
     settings_lock();
     switch (id) {
@@ -282,9 +289,8 @@ static void enforce_edit_limits_circular(menu_node_id_t id, int direction) {
 }
 
 static void update_sht_view(void) {
-    // ОБЯЗАТЕЛЬНО {0}, чтобы исключить мусор из ОЗУ при старте
-    cabinet_climate_data_t clim = {0}; 
-    climate_get_latest_data(&clim); 
+    cabinet_climate_data_t clim = {0};
+    climate_get_latest_data(&clim);
 
     int row = sht_cursor_idx / 2;
     int col = sht_cursor_idx % 2; 
@@ -354,6 +360,9 @@ void menu_engine_init(void) {
 
 void menu_engine_boot_complete(void) {
     current_state = STATE_MAIN_SCREEN;
+    settings_lock();
+    is_system_locked = sys_settings.passwordEnabled; // Применяем защиту на старте
+    settings_unlock();
     ui_screens_show_main();
 }
 
@@ -380,6 +389,30 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
         return ESP_OK;
     }
 
+     // --- АППАРАТНЫЙ СБРОС ПАРОЛЯ ---
+    if (event == EVENT_HARDWARE_PASS_RESET) {
+        ESP_LOGW(TAG, "Hardware password reset executed!");
+        settings_lock();
+        sys_settings.passwordLen = 0;
+        sys_settings.passwordEnabled = false;
+        is_system_locked = false; // Сразу снимаем блокировку
+        settings_unlock();
+        settings_save();
+
+        ui_screens_show_popup("Пароль сброшен");
+        
+        if (!menu_engine_is_on_main_screen()) {
+            menu_engine_force_main_screen();
+        }
+        return ESP_OK;
+    }
+
+    if (event == EVENT_SYSTEM_LOCK) {
+        is_system_locked = true;
+        if (!menu_engine_is_on_main_screen()) menu_engine_force_main_screen();
+        return ESP_OK;
+    }
+
     if (current_state == STATE_SPLASH_SCREEN) return ESP_OK; 
 
     // =========================================================
@@ -387,12 +420,18 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
     // =========================================================
     if (current_state == STATE_MAIN_SCREEN) {
         if (event == EVENT_SWIPE_RIGHT || event == EVENT_TAP) {
-            current_state = STATE_IN_MENU;
-            current_folder_id = M_ROOT;
-            cursor_idx = 0;
-            scroll_offset = 0;
-            ui_screens_show_menu();
-            update_view();
+            if (is_system_locked) {
+                current_state = STATE_PASS_CHECK;
+                temp_pass_len = 0;
+                ui_screens_show_pass_input("Введите пароль", "");
+            } else {
+                current_state = STATE_IN_MENU;
+                current_folder_id = M_ROOT;
+                cursor_idx = 0;
+                scroll_offset = 0;
+                ui_screens_show_menu();
+                update_view();
+            }
         }
     }
     else if (current_state == STATE_IN_MENU) {
@@ -467,6 +506,7 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
                     settings_lock();
                     sys_settings.passwordLen = 0;
                     sys_settings.passwordEnabled = false;
+                    is_system_locked = false;
                     settings_unlock();
                     settings_save();
                     ui_screens_show_popup("Пароль сброшен");
@@ -550,13 +590,13 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
     }
 
     // =========================================================
-    // ПАРОЛЬ
+    // ПАРОЛЬ (ИНСТРУКЦИЯ И УСТАНОВКА)
     // =========================================================
     else if (current_state == STATE_PASS_INSTRUCT) {
         if (event == EVENT_SWIPE_RIGHT) {
             current_state = STATE_PASS_INPUT;
             temp_pass_len = 0;
-            ui_screens_show_pass_input("");
+            ui_screens_show_pass_input("Введите новый пароль", "");
         } else if (event == EVENT_SWIPE_LEFT) {
             current_state = STATE_IN_MENU;
             ui_screens_show_menu();
@@ -569,7 +609,7 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
                 temp_pass[temp_pass_len++] = event;
                 char buf[32];
                 render_password_string(buf, sizeof(buf));
-                ui_screens_show_pass_input(buf);
+                ui_screens_show_pass_input("Введите новый пароль", buf);
             }
         } 
         else if (event == EVENT_FIFTH_BTN_PRESS) { 
@@ -590,6 +630,52 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
            current_state = STATE_IN_MENU;
            ui_screens_show_menu();
            update_view();
+        }
+    }
+    
+    // =========================================================
+    // ПРОВЕРКА ПАРОЛЯ ПРИ ВХОДЕ В МЕНЮ
+    // =========================================================
+    else if (current_state == STATE_PASS_CHECK) {
+        if (event == EVENT_SWIPE_UP || event == EVENT_SWIPE_DOWN || event == EVENT_SWIPE_LEFT || event == EVENT_SWIPE_RIGHT) {
+            if (temp_pass_len < 5) {
+                temp_pass[temp_pass_len++] = event;
+                char buf[32];
+                render_password_string(buf, sizeof(buf));
+                ui_screens_show_pass_input("Введите пароль", buf);
+            }
+        }
+        else if (event == EVENT_FIFTH_BTN_PRESS) {
+            bool is_match = false;
+            settings_lock();
+            if (temp_pass_len == sys_settings.passwordLen && temp_pass_len > 0) {
+                is_match = true;
+                for(int i = 0; i < temp_pass_len; i++) {
+                    if (temp_pass[i] != sys_settings.password[i]) {
+                        is_match = false;
+                        break;
+                    }
+                }
+            }
+            settings_unlock();
+
+            if (is_match) {
+                is_system_locked = false; 
+                ui_screens_show_popup("Доступ разрешен");
+                current_state = STATE_IN_MENU;
+                current_folder_id = M_ROOT;
+                cursor_idx = 0; scroll_offset = 0;
+                ui_screens_show_menu();
+                update_view();
+            } else {
+                ui_screens_show_popup("Неверный пароль");
+                temp_pass_len = 0;
+                ui_screens_show_pass_input("Введите пароль", "");
+            }
+        }
+        else if (event == EVENT_SWIPE_LEFT && temp_pass_len == 0) {
+            current_state = STATE_MAIN_SCREEN;
+            ui_screens_show_main();
         }
     }
 
