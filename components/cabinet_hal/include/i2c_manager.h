@@ -19,6 +19,9 @@ void i2c_manager_unlock(void);
 // esp_err_t i2c_manager_set_mux(uint8_t channel);
 esp_err_t i2c_manager_set_mux(uint8_t mux_addr, uint8_t channel);
 
+// [НОВОЕ] Жесткая аппаратная перезагрузка шины I2C при зависании
+esp_err_t i2c_manager_recovery(void);
+
 #ifdef __cplusplus
 }
 #endif

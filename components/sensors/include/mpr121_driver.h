@@ -31,8 +31,8 @@ extern "C" {
 // =====================================================================
 
 // Макросы для порогов
-#define MPR121_TOUCH_THRESH    5
-#define MPR121_RELEASE_THRESH  3
+#define MPR121_TOUCH_THRESH    12
+#define MPR121_RELEASE_THRESH  6
 
 // =====================================================================
 
