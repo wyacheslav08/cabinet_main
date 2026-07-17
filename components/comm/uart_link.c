@@ -121,3 +121,12 @@ esp_err_t uart_link_send_telemetry(float temp, float hum, int32_t weight_g, bool
     ESP_LOGD(TAG, "Sending telemetry to Gateway: %s", buf);
     return uart_link_send((const uint8_t*)buf, len);
 }
+
+esp_err_t uart_link_set_actuator(const char* device, int value) {
+    if (!device) return ESP_ERR_INVALID_ARG;
+    char buf[64];
+    // Формируем пакет вида: CMD_ACT:LOCK=1\r\n или CMD_ACT:HEATER_HUM=50\r\n
+    int len = snprintf(buf, sizeof(buf), "CMD_ACT:%s=%d\r\n", device, value);
+    ESP_LOGD(TAG, "Sending Actuator CMD: %s", buf);
+    return uart_link_send((const uint8_t*)buf, len);
+}

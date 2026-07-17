@@ -23,6 +23,12 @@ static lv_obj_t* cont_main = NULL;
 static lv_obj_t* cont_menu = NULL;
 static lv_obj_t* cont_edit = NULL;
 static lv_obj_t* lbl_popup = NULL;
+static lv_obj_t* lbl_icon_wifi = NULL;
+static lv_obj_t* lbl_icon_ble = NULL;
+static lv_obj_t* lbl_icon_lock = NULL;
+static lv_timer_t* lock_blink_timer = NULL;
+
+
 
 // --- ДОБАВЛЯЕМ ПЕРЕМЕННЫЕ ДЛЯ АНИМАЦИИ ---
 static lv_obj_t* lbl_loading_dots = NULL;
@@ -86,6 +92,33 @@ static void popup_timer_cb(lv_timer_t * timer) {
     // Ставим таймер на паузу, чтобы он не срабатывал каждую секунду,
     // но при этом НЕ УДАЛЯЛСЯ из памяти движком LVGL.
     lv_timer_pause(timer); 
+}
+
+// --- КОЛЛБЭК ТАЙМЕРА МИГАНИЯ ЗАМКА ---
+static void lock_blink_cb(lv_timer_t * timer) {
+    if (!lbl_icon_lock) return;
+    if (lv_obj_has_flag(lbl_icon_lock, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_remove_flag(lbl_icon_lock, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(lbl_icon_lock, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// --- ФУНКЦИЯ УПРАВЛЕНИЯ МИГАНИЕМ ---
+void ui_screens_set_lock_blink(bool enable) {
+    if (enable) {
+        if (!lock_blink_timer) {
+            lock_blink_timer = lv_timer_create(lock_blink_cb, 300, NULL);
+        }
+    } else {
+        if (lock_blink_timer) {
+            lv_timer_delete(lock_blink_timer);
+            lock_blink_timer = NULL;
+        }
+        if (lbl_icon_lock) {
+            lv_obj_remove_flag(lbl_icon_lock, LV_OBJ_FLAG_HIDDEN); // Оставляем видимым при выключении
+        }
+    }
 }
 
 void ui_screens_init(void) {
@@ -161,6 +194,32 @@ void ui_screens_init(void) {
     lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0xFF8800), 0);
     lv_label_set_text(lbl_temp_unit, "°С");
 
+
+
+    // 4. В функции ui_screens_init() ЗАМЕНИ создание lbl_main_icons на этот блок:
+    // Контейнер для иконок в правом верхнем углу
+    lv_obj_t* icon_cont = lv_obj_create(cont_main);
+    lv_obj_set_size(icon_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(icon_cont, LV_ALIGN_TOP_RIGHT, -10, 10);
+    lv_obj_set_layout(icon_cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(icon_cont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(icon_cont, 8, 0); // Отступ между иконками
+    lv_obj_set_style_bg_opa(icon_cont, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(icon_cont, 0, 0);
+    lv_obj_set_scrollbar_mode(icon_cont, LV_SCROLLBAR_MODE_OFF);
+
+    lbl_icon_wifi = lv_label_create(icon_cont);
+    lv_obj_set_style_text_font(lbl_icon_wifi, &font_cyrillic_16, 0);
+    lv_obj_set_style_text_color(lbl_icon_wifi, lv_color_hex(0xFFFFFF), 0);
+
+    lbl_icon_ble = lv_label_create(icon_cont);
+    lv_obj_set_style_text_font(lbl_icon_ble, &font_cyrillic_16, 0);
+    lv_obj_set_style_text_color(lbl_icon_ble, lv_color_hex(0xFFFFFF), 0);
+
+    lbl_icon_lock = lv_label_create(icon_cont);
+    lv_obj_set_style_text_font(lbl_icon_lock, &font_cyrillic_16, 0);
+    lv_obj_set_style_text_color(lbl_icon_lock, lv_color_hex(0xFFFFFF), 0);
+   
     // =========================================================================
     // 2. ЭКРАН МЕНЮ
     // =========================================================================
@@ -236,7 +295,7 @@ void ui_screens_init(void) {
     lv_obj_align(lbl_edit_hints, LV_ALIGN_BOTTOM_MID, 0, -5);
 
 
-        // =========================================================================
+    // =========================================================================
     // 4. ЭКРАН ТАБЛИЦЫ SHT
     // =========================================================================
     cont_sht = lv_obj_create(screen);
@@ -492,7 +551,7 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
         snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
     }
 
-    char str_icons[32];
+        char str_icons[32];
     snprintf(str_icons, sizeof(str_icons), "%s %s %s", rssi > 0 ? SYM_WIFI : " ", ble ? SYM_BLE : " ", locked ? SYM_LOCK_CLOSED : SYM_LOCK_OPEN);
 
     // Обновляем текст
@@ -501,18 +560,22 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
     if (lbl_temp_int) lv_label_set_text(lbl_temp_int, s_t_int);
     if (lbl_temp_frac) lv_label_set_text(lbl_temp_frac, s_t_frac);
     
+    // Старая строка иконок для меню
     if (lbl_status_icons) lv_label_set_text(lbl_status_icons, str_icons);
     if (lbl_status_climate) lv_label_set_text(lbl_status_climate, str_climate_mini);
 
-        // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT) после изменения текста.
-    // В LVGL 9 для этого мы просто заново применяем правило выравнивания.
+    // === НОВЫЕ РАЗДЕЛЬНЫЕ ИКОНКИ ДЛЯ ГЛАВНОГО ЭКРАНА ===
+    if (lbl_icon_wifi) lv_label_set_text(lbl_icon_wifi, rssi > 0 ? SYM_WIFI : "");
+    if (lbl_icon_ble)  lv_label_set_text(lbl_icon_ble, ble ? SYM_BLE : "");
+    if (lbl_icon_lock) lv_label_set_text(lbl_icon_lock, locked ? SYM_LOCK_CLOSED : SYM_LOCK_OPEN);
+
+    // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT)
     if (lbl_hum_frac && lbl_hum_int) {
         lv_obj_align_to(lbl_hum_frac, lbl_hum_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
     }
     if (lbl_hum_unit && lbl_hum_int) {
         lv_obj_align_to(lbl_hum_unit, lbl_hum_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
     }
-    
     if (lbl_temp_frac && lbl_temp_int) {
         lv_obj_align_to(lbl_temp_frac, lbl_temp_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
     }

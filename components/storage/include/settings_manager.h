@@ -14,7 +14,7 @@ typedef struct {
 
     // --- Общие настройки (GEN_SET) ---
     int targetHumidity;
-    uint16_t lockHoldTime;
+    uint16_t lockHoldTime;  // Время удержание замка двери открытым
     int lockTimeIndex;
     int menuTimeoutOptionIndex;
     int screenTimeoutOptionIndex;

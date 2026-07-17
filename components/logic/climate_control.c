@@ -8,6 +8,8 @@
 #include "freertos/semphr.h"
 #include "uart_link.h"
 #include "menu_engine.h"
+#include "pwm_manager.h"
+#include "weight_manager.h"
 
 static const char *TAG = "CLIMATE_CTRL";
 
@@ -50,15 +52,8 @@ static void climate_control_task(void *pvParameters) {
     while (1) {
         // 1. Опрос датчиков (ЗАНИМАЕТ 40 мс)
         sht40_read_all(&climate_data);
-        // --- Получаем реальный статус блокировки экрана ---
-        ui_data.is_locked = menu_engine_is_locked();
-        
-        // 2. БЕЗОПАСНОЕ СОХРАНЕНИЕ ДЛЯ МЕНЮ (Мгновенно, без блокировки LVGL)
-        xSemaphoreTake(climate_mutex, portMAX_DELAY);
-        g_latest_climate_data = climate_data;
-        xSemaphoreGive(climate_mutex);
 
-        // 3. Подготовка данных для статус-бара
+        // 3. Подготовка данных для статус-бара экрана и телеметрии
         sht40_reading_t *main_sensor = &climate_data.sensors[SHT40_MAIN];
         if (main_sensor->is_valid) {
             ui_data.temperature = main_sensor->temperature;
@@ -76,7 +71,19 @@ static void climate_control_task(void *pvParameters) {
             ui_data.humidity = -100.0f;
         }
 
-        // 4. Обновление экрана (Теперь безопасно, LVGL не заблокирует климат)
+        // --- ЧИТАЕМ РЕАЛЬНЫЙ СТАТУС ПЕРИФЕРИИ ---
+        ui_data.is_locked = pwm_get_door_lock_state(); // Передает статус для отображения \uF023 или \uF09C
+        
+        int32_t weight_g = 0;
+        if (weight_get_grams(&weight_g) == ESP_OK) {
+            ui_data.weight_grams = weight_g;
+            ui_data.is_guitar_present = (weight_identify_guitar(weight_g) != NULL);
+        } else {
+            ui_data.weight_grams = 0;
+            ui_data.is_guitar_present = false;
+        }
+
+        // 4. Обновление экрана (LVGL отрисует символы замка и климата)
         if (g_display_handle != NULL) {
             display_manager_update_status(g_display_handle, &ui_data);
         }

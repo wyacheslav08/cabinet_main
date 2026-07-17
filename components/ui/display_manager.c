@@ -364,3 +364,12 @@ esp_err_t display_manager_boot_complete(display_handle_t handle) {
     }
     return ESP_OK;
 }
+
+esp_err_t display_manager_set_lock_blink(display_handle_t handle, bool enable) {
+    if (!handle) return ESP_ERR_INVALID_ARG;
+    if (lvgl_port_lock(pdMS_TO_TICKS(50))) {
+        ui_screens_set_lock_blink(enable);
+        lvgl_port_unlock();
+    }
+    return ESP_OK;
+}

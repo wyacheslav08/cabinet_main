@@ -26,6 +26,8 @@ void menu_engine_boot_complete(void);
 // Узнать, заблокирован ли сейчас экран (для иконки)
 bool menu_engine_is_locked(void);
 
+void menu_engine_start_router(void);
+
 #ifdef __cplusplus
 }
 #endif

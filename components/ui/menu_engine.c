@@ -14,6 +14,8 @@
 #include "esp_system.h"
 #include <stdio.h>
 #include <string.h>
+#include "pwm_manager.h"
+#include "display_manager.h"
 
 static const char __attribute__((unused)) *TAG = "MENU_ENGINE";
 
@@ -380,6 +382,69 @@ void menu_engine_force_main_screen(void) {
     }
 }
 
+extern display_handle_t g_display_handle;
+
+static void hmi_router_task(void *pvParameters) {
+    hmi_msg_t msg;
+    ESP_LOGI(TAG, "HMI Router Task started on Core 0");
+
+    while (1) {
+        if (xQueueReceive(hmi_event_queue, &msg, portMAX_DELAY) == pdTRUE) {
+            
+            // 1. Аппаратный сброс пароля (обрабатываем напрямую)
+            if (msg.type == EVENT_HARDWARE_PASS_RESET) {
+                menu_engine_process_gesture(msg.type);
+                continue;
+            }
+
+            // 2. СИСТЕМА БЕЗОПАСНОСТИ: ОТКРЫТИЕ ЗАМКА
+            if (msg.type == EVENT_FIFTH_BTN_HOLD) {
+                if (menu_engine_is_on_main_screen()) {
+                    
+                    if (door_sensor_is_open() || !pwm_is_door_safe_to_unlock()) {
+                        ESP_LOGW(TAG, "Unlock ignored: Door open or debounce active.");
+                        continue;
+                    }
+
+                    ESP_LOGI(TAG, "DOOR UNLOCK SEQUENCE STARTED");
+                    
+                    gesture_set_panel_enabled(false);
+                    
+                    // Включаем мигание замка в UI
+                    if (g_display_handle) display_manager_set_lock_blink(g_display_handle, true);
+                    
+                    // Открываем замок
+                    pwm_set_door_lock(false);
+                    
+                    settings_lock();
+                    uint32_t hold_time = sys_settings.lockHoldTime; // Макрос заменен на настройку (по умолчанию 1000мс)
+                    settings_unlock();
+
+                    vTaskDelay(pdMS_TO_TICKS(hold_time));
+                    
+                    // Закрываем замок
+                    pwm_set_door_lock(true);
+                    
+                    // Выключаем мигание
+                    if (g_display_handle) display_manager_set_lock_blink(g_display_handle, false);
+                    
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    gesture_set_panel_enabled(true);
+                }
+                continue; // Жест удержания не передаем в UI
+            }
+            
+            // 3. Обычные жесты передаем в UI
+            if (g_display_handle != NULL) {
+                display_manager_process_gesture(g_display_handle, msg.type);
+            }
+        }
+    }
+}
+
+void menu_engine_start_router(void) {
+    xTaskCreatePinnedToCore(hmi_router_task, "hmi_router", 4096, NULL, 5, NULL, 0);
+}
 // =========================================================================
 // 5. ОБРАБОТЧИК ЖЕСТОВ
 // =========================================================================

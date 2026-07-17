@@ -96,6 +96,7 @@ esp_err_t display_manager_destroy(display_handle_t handle);
  * @brief Аппаратный разворот интерфейса на 180 градусов
  */
 esp_err_t display_manager_set_rotation(display_handle_t handle, uint8_t rotation_idx);
+esp_err_t display_manager_set_lock_blink(display_handle_t handle, bool enable);
 
 #ifdef __cplusplus
 }

@@ -30,7 +30,7 @@ esp_err_t settings_reset_to_defaults(void) {
     
     // Общие
     sys_settings.targetHumidity = 50;
-    sys_settings.lockHoldTime = 1000;
+    sys_settings.lockHoldTime = 2000;   // Время удержание замка двери открытым
     sys_settings.lockTimeIndex = 0;
     sys_settings.menuTimeoutOptionIndex = 1;
     sys_settings.screenTimeoutOptionIndex = 0;
