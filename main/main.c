@@ -1,6 +1,7 @@
 /**
  * @file main.c
  * @brief Точка входа прошивки гитарного климат-кабинета (Main Board).
+ * nn
  */
 
 #include "freertos/FreeRTOS.h"
