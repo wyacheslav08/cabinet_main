@@ -1,0 +1,14 @@
+name: Test Action
+
+# Запускать каждый раз, когда вы отправляете код на GitHub
+on: [push]
+
+jobs:
+  test-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Скачиваем код
+        uses: actions/checkout@v4
+        
+      - name: Приветственный скрипт
+        run: echo "Привет! GitHub Actions успешно подключен к проекту!"
