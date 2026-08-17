@@ -14,10 +14,22 @@ static QueueHandle_t uart_queue = NULL;
 
 static void apply_key_value(const char *key, const char *val) {
     if (!key || !val) return;
+    
     settings_lock();
-    if (strcmp(key, "targetHumidity") == 0) sys_settings.targetHumidity = atoi(val);
-    else if (strcmp(key, "lockHoldTime") == 0) sys_settings.lockHoldTime = atoi(val);
-    // ... (остальные проверки аналогично оригиналу, убрано для краткости, но логика сохранена) ...
+    if (strcmp(key, "targetHumidity") == 0) {
+        int val_int = atoi(val);
+        // Валидация диапазона
+        if (val_int < 0) val_int = 0;
+        if (val_int > 100) val_int = 100;
+        settings_set_target_humidity(val_int);
+    }
+    else if (strcmp(key, "lockHoldTime") == 0) {
+        uint16_t val_uint = (uint16_t)atoi(val);
+        const cabinet_settings_t* cfg = settings_get_readonly();
+        cabinet_settings_t* mutable_cfg = (cabinet_settings_t*)cfg;
+        mutable_cfg->lock_hold_time_ms = val_uint;
+    }
+    // TODO: Добавить обработку остальных полей по аналогии
     settings_unlock();
 }
 
