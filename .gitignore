@@ -2,11 +2,11 @@
 # Compiled and build artifacts
 *.o
 *.obj
+*.out
 *.a
 *.so
 *.dll
 *.exe
-*.out
 
 # Dependencies
 node_modules/

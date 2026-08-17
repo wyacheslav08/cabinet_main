@@ -59,9 +59,8 @@ static void climate_control_task(void *pvParameters) {
             ui_data.temperature = main_sensor->temperature;
             ui_data.humidity = main_sensor->humidity;
 
-            settings_lock();
-            int target_hum = sys_settings.targetHumidity;
-            settings_unlock();
+            int target_hum = 0;
+            settings_get_target_humidity(&target_hum);
 
             ui_data.is_humidifying = (main_sensor->humidity < (target_hum - 2.0f));
             ui_data.is_dehumidifying = (main_sensor->humidity > (target_hum + 2.0f));

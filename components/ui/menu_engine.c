@@ -168,66 +168,68 @@ bool menu_engine_is_locked(void) {
 }
 
 static void load_edit_value(menu_node_id_t id) {
-    settings_lock();
+    const cabinet_settings_t* cfg = settings_get_readonly();
+    
     switch (id) {
-        case M_CLIM_MANUAL:     edit_value = sys_settings.targetHumidity; break;
-        case M_SYS_DEADZONE:    edit_value = (int)sys_settings.deadZonePercent; break;
-        case M_SYS_MIN_CHANGE:  edit_value = (int)sys_settings.minHumidityChangeForTimeout; break;
-        case M_SYS_MAX_TIME:    edit_value = sys_settings.maxOperationDuration / 60000; break; 
-        case M_SYS_COOLDOWN:    edit_value = sys_settings.operationCooldown / 60000; break;
-        case M_SYS_MAX_SAFE:    edit_value = (int)sys_settings.maxSafeHumidity; break;
-        case M_SYS_RES_DIFF:    edit_value = (int)sys_settings.resourceCheckDiff; break;
-        case M_SYS_HYSTERESIS:  edit_value = (int)sys_settings.humidityHysteresis; break;
-        case M_SYS_RES_LOW:     edit_value = sys_settings.resourceLowFaultThreshold; break;
-        case M_SYS_RES_EMPTY:   edit_value = sys_settings.resourceEmptyFaultThreshold; break;
-        case M_SCR_BRIGHTNESS:  edit_value = sys_settings.screenBrightnessIdx; break;
-        case M_SCR_TIMEOUT:     edit_value = sys_settings.screenTimeoutOptionIndex; break;
-        case M_SCR_ROTATION:    edit_value = sys_settings.screenRotationIndex; break;
-        case M_SCR_MENU_EXIT:   edit_value = sys_settings.menuTimeoutOptionIndex; break;
-        case M_SET_BTN_HOLD:    edit_value = sys_settings.lockHoldTime / 1000; break;
-        case M_SET_TOUCH_ROT:   edit_value = sys_settings.touchRotationIndex; break;
-        case M_SND_DOOR:        edit_value = sys_settings.doorSoundEnabled ? 1 : 0; break;
-        case M_SND_RES:         edit_value = sys_settings.waterSilicaSoundEnabled ? 1 : 0; break;
-        case M_HEAT_TOGGLE:     edit_value = sys_settings.waterHeaterEnabled ? 1 : 0; break;
-        case M_HEAT_MAX_TEMP:   edit_value = sys_settings.waterHeaterMaxTemp; break;
-        case M_PASS_TOGGLE:     edit_value = sys_settings.passwordEnabled ? 1 : 0; break;
-        case M_PASS_LOCK_TIME:  edit_value = sys_settings.lockTimeIndex; break;
+        case M_CLIM_MANUAL:     edit_value = cfg->target_humidity; break;
+        case M_SYS_DEADZONE:    edit_value = (int)cfg->dead_zone_percent; break;
+        case M_SYS_MIN_CHANGE:  edit_value = (int)cfg->min_humidity_change_for_timeout; break;
+        case M_SYS_MAX_TIME:    edit_value = cfg->max_operation_duration_ms / 60000; break; 
+        case M_SYS_COOLDOWN:    edit_value = cfg->operation_cooldown_ms / 60000; break;
+        case M_SYS_MAX_SAFE:    edit_value = (int)cfg->max_safe_humidity; break;
+        case M_SYS_RES_DIFF:    edit_value = (int)cfg->resource_check_diff; break;
+        case M_SYS_HYSTERESIS:  edit_value = (int)cfg->humidity_hysteresis; break;
+        case M_SYS_RES_LOW:     edit_value = cfg->resource_low_fault_threshold; break;
+        case M_SYS_RES_EMPTY:   edit_value = cfg->resource_empty_fault_threshold; break;
+        case M_SCR_BRIGHTNESS:  edit_value = cfg->screen_brightness_idx; break;
+        case M_SCR_TIMEOUT:     edit_value = cfg->screen_timeout_index; break;
+        case M_SCR_ROTATION:    edit_value = cfg->screen_rotation_index; break;
+        case M_SCR_MENU_EXIT:   edit_value = cfg->menu_timeout_index; break;
+        case M_SET_BTN_HOLD:    edit_value = cfg->lock_hold_time_ms / 1000; break;
+        case M_SET_TOUCH_ROT:   edit_value = cfg->touch_rotation_index; break;
+        case M_SND_DOOR:        edit_value = cfg->door_sound_enabled ? 1 : 0; break;
+        case M_SND_RES:         edit_value = cfg->water_silica_sound_enabled ? 1 : 0; break;
+        case M_HEAT_TOGGLE:     edit_value = cfg->water_heater_enabled ? 1 : 0; break;
+        case M_HEAT_MAX_TEMP:   edit_value = cfg->water_heater_max_temp; break;
+        case M_PASS_TOGGLE:     edit_value = cfg->password_enabled ? 1 : 0; break;
+        case M_PASS_LOCK_TIME:  edit_value = cfg->lock_time_index; break;
         default: edit_value = 0; break;
     }
-    settings_unlock();
 }
 
 static void save_edit_value(menu_node_id_t id) {
     settings_lock();
+    cabinet_settings_t* cfg = (cabinet_settings_t*)settings_get_readonly();
+    
     switch (id) {
-        case M_CLIM_MANUAL:     sys_settings.targetHumidity = edit_value; break;
-        case M_SYS_DEADZONE:    sys_settings.deadZonePercent = (float)edit_value; break;
-        case M_SYS_MIN_CHANGE:  sys_settings.minHumidityChangeForTimeout = (float)edit_value; break;
-        case M_SYS_MAX_TIME:    sys_settings.maxOperationDuration = edit_value * 60000; break;
-        case M_SYS_COOLDOWN:    sys_settings.operationCooldown = edit_value * 60000; break;
-        case M_SYS_MAX_SAFE:    sys_settings.maxSafeHumidity = (float)edit_value; break;
-        case M_SYS_RES_DIFF:    sys_settings.resourceCheckDiff = (float)edit_value; break;
-        case M_SYS_HYSTERESIS:  sys_settings.humidityHysteresis = (float)edit_value; break;
-        case M_SYS_RES_LOW:     sys_settings.resourceLowFaultThreshold = edit_value; break;
-        case M_SYS_RES_EMPTY:   sys_settings.resourceEmptyFaultThreshold = edit_value; break;
+        case M_CLIM_MANUAL:     cfg->target_humidity = edit_value; break;
+        case M_SYS_DEADZONE:    cfg->dead_zone_percent = (float)edit_value; break;
+        case M_SYS_MIN_CHANGE:  cfg->min_humidity_change_for_timeout = (float)edit_value; break;
+        case M_SYS_MAX_TIME:    cfg->max_operation_duration_ms = edit_value * 60000; break;
+        case M_SYS_COOLDOWN:    cfg->operation_cooldown_ms = edit_value * 60000; break;
+        case M_SYS_MAX_SAFE:    cfg->max_safe_humidity = (float)edit_value; break;
+        case M_SYS_RES_DIFF:    cfg->resource_check_diff = (float)edit_value; break;
+        case M_SYS_HYSTERESIS:  cfg->humidity_hysteresis = (float)edit_value; break;
+        case M_SYS_RES_LOW:     cfg->resource_low_fault_threshold = edit_value; break;
+        case M_SYS_RES_EMPTY:   cfg->resource_empty_fault_threshold = edit_value; break;
         case M_SCR_BRIGHTNESS:  
-            sys_settings.screenBrightnessIdx = edit_value; 
+            cfg->screen_brightness_idx = edit_value; 
             if (g_display_handle) display_manager_set_brightness(g_display_handle, brightness_opts[edit_value]);
             break;
-        case M_SCR_TIMEOUT:     sys_settings.screenTimeoutOptionIndex = edit_value; break;
+        case M_SCR_TIMEOUT:     cfg->screen_timeout_index = edit_value; break;
         case M_SCR_ROTATION:    
-            sys_settings.screenRotationIndex = edit_value; 
+            cfg->screen_rotation_index = edit_value; 
             if (g_display_handle) display_manager_set_rotation(g_display_handle, edit_value);
             break;
-        case M_SCR_MENU_EXIT:   sys_settings.menuTimeoutOptionIndex = edit_value; break;
-        case M_SET_BTN_HOLD:    sys_settings.lockHoldTime = edit_value * 1000; break;
-        case M_SET_TOUCH_ROT:   sys_settings.touchRotationIndex = edit_value; break;
-        case M_SND_DOOR:        sys_settings.doorSoundEnabled = (edit_value > 0); break;
-        case M_SND_RES:         sys_settings.waterSilicaSoundEnabled = (edit_value > 0); break;
-        case M_HEAT_TOGGLE:     sys_settings.waterHeaterEnabled = (edit_value > 0); break;
-        case M_HEAT_MAX_TEMP:   sys_settings.waterHeaterMaxTemp = edit_value; break;
-        case M_PASS_TOGGLE:     sys_settings.passwordEnabled = (edit_value > 0); break;
-        case M_PASS_LOCK_TIME:  sys_settings.lockTimeIndex = edit_value; break;
+        case M_SCR_MENU_EXIT:   cfg->menu_timeout_index = edit_value; break;
+        case M_SET_BTN_HOLD:    cfg->lock_hold_time_ms = edit_value * 1000; break;
+        case M_SET_TOUCH_ROT:   cfg->touch_rotation_index = edit_value; break;
+        case M_SND_DOOR:        cfg->door_sound_enabled = (edit_value > 0); break;
+        case M_SND_RES:         cfg->water_silica_sound_enabled = (edit_value > 0); break;
+        case M_HEAT_TOGGLE:     cfg->water_heater_enabled = (edit_value > 0); break;
+        case M_HEAT_MAX_TEMP:   cfg->water_heater_max_temp = edit_value; break;
+        case M_PASS_TOGGLE:     cfg->password_enabled = (edit_value > 0); break;
+        case M_PASS_LOCK_TIME:  cfg->lock_time_index = edit_value; break;
         default: break;
     }
     settings_unlock();
@@ -362,9 +364,8 @@ void menu_engine_init(void) {
 
 void menu_engine_boot_complete(void) {
     current_state = STATE_MAIN_SCREEN;
-    settings_lock();
-    is_system_locked = sys_settings.passwordEnabled; // Применяем защиту на старте
-    settings_unlock();
+    const cabinet_settings_t* cfg = settings_get_readonly();
+    is_system_locked = cfg->password_enabled; // Применяем защиту на старте
     ui_screens_show_main();
 }
 
@@ -416,10 +417,9 @@ static void hmi_router_task(void *pvParameters) {
                     // Открываем замок
                     pwm_set_door_lock(false);
                     
-                    settings_lock();
-                    uint32_t hold_time = sys_settings.lockHoldTime; // Макрос заменен на настройку (по умолчанию 1000мс)
-                    settings_unlock();
-
+                    uint32_t hold_time = 1000;
+                    settings_get_lock_hold_time(&hold_time);
+                    
                     vTaskDelay(pdMS_TO_TICKS(hold_time));
                     
                     // Закрываем замок
@@ -458,8 +458,9 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
     if (event == EVENT_HARDWARE_PASS_RESET) {
         ESP_LOGW(TAG, "Hardware password reset executed!");
         settings_lock();
-        sys_settings.passwordLen = 0;
-        sys_settings.passwordEnabled = false;
+        cabinet_settings_t* cfg = (cabinet_settings_t*)settings_get_readonly();
+        cfg->password_len = 0;
+        cfg->password_enabled = false;
         is_system_locked = false; // Сразу снимаем блокировку
         settings_unlock();
         settings_save();
@@ -551,26 +552,25 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
                 else if (selected->id == M_SET_SHT_SENSORS) {
                     current_state = STATE_SHT_TABLE;
                     sht_cursor_idx = 0;
-                    settings_lock();
+                    const cabinet_settings_t* cfg = settings_get_readonly();
                     for(int i=0; i<4; i++) {
-                        sht_temp_adj[i] = sys_settings.sht_temp_adj[i];
-                        sht_hum_adj[i] = sys_settings.sht_hum_adj[i];
+                        sht_temp_adj[i] = cfg->sht_temp_adj[i];
+                        sht_hum_adj[i] = cfg->sht_hum_adj[i];
                     }
-                    settings_unlock();
                     ui_screens_show_sht_table();
                     update_sht_view();
                 } 
                 else if (selected->id == M_PASS_SET) {
                     current_state = STATE_PASS_INSTRUCT;
-                    settings_lock();
-                    bool is_not_set = (sys_settings.passwordLen == 0);
-                    settings_unlock();
+                    const cabinet_settings_t* cfg = settings_get_readonly();
+                    bool is_not_set = (cfg->password_len == 0);
                     ui_screens_show_pass_inst(is_not_set);
                 }
                 else if (selected->id == M_PASS_RESET) {
                     settings_lock();
-                    sys_settings.passwordLen = 0;
-                    sys_settings.passwordEnabled = false;
+                    cabinet_settings_t* cfg = (cabinet_settings_t*)settings_get_readonly();
+                    cfg->password_len = 0;
+                    cfg->password_enabled = false;
                     is_system_locked = false;
                     settings_unlock();
                     settings_save();
@@ -640,9 +640,10 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
         }
         else if (event == EVENT_SWIPE_RIGHT) {
             settings_lock();
+            cabinet_settings_t* cfg = (cabinet_settings_t*)settings_get_readonly();
             for(int i=0; i<4; i++) {
-                sys_settings.sht_hum_adj[i] = sht_hum_adj[i];
-                sys_settings.sht_temp_adj[i] = sht_temp_adj[i];
+                cfg->sht_hum_adj[i] = sht_hum_adj[i];
+                cfg->sht_temp_adj[i] = sht_temp_adj[i];
             }
             settings_unlock();
             settings_save();
@@ -680,9 +681,10 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
         else if (event == EVENT_FIFTH_BTN_PRESS) { 
             if (temp_pass_len > 0) {
                 settings_lock();
-                sys_settings.passwordLen = temp_pass_len;
-                for(int i=0; i<temp_pass_len; i++) sys_settings.password[i] = temp_pass[i];
-                sys_settings.passwordEnabled = true;
+                cabinet_settings_t* cfg = (cabinet_settings_t*)settings_get_readonly();
+                cfg->password_len = temp_pass_len;
+                for(int i=0; i<temp_pass_len; i++) cfg->password[i] = temp_pass[i];
+                cfg->password_enabled = true;
                 settings_unlock();
                 settings_save();
                 ui_screens_show_popup("Сохранено");
@@ -712,17 +714,16 @@ esp_err_t menu_engine_process_gesture(hmi_event_type_t event) {
         }
         else if (event == EVENT_FIFTH_BTN_PRESS) {
             bool is_match = false;
-            settings_lock();
-            if (temp_pass_len == sys_settings.passwordLen && temp_pass_len > 0) {
+            const cabinet_settings_t* cfg = settings_get_readonly();
+            if (temp_pass_len == cfg->password_len && temp_pass_len > 0) {
                 is_match = true;
                 for(int i = 0; i < temp_pass_len; i++) {
-                    if (temp_pass[i] != sys_settings.password[i]) {
+                    if (temp_pass[i] != cfg->password[i]) {
                         is_match = false;
                         break;
                     }
                 }
             }
-            settings_unlock();
 
             if (is_match) {
                 is_system_locked = false; 

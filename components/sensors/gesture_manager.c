@@ -142,9 +142,10 @@ static void mpr121_polling_task(void *pvParameters) {
 
     while (1) {
         bool hw_flipped = (gpio_get_level(PIN_ORIENTATION_SENSOR) == 1); 
-        settings_lock();
-        bool sw_flipped = (sys_settings.touchRotationIndex == 1);
-        settings_unlock();
+        
+        const cabinet_settings_t* cfg = settings_get_readonly();
+        bool sw_flipped = (cfg->touch_rotation_index == 1);
+        
         g_panel_inverted = hw_flipped ^ sw_flipped;
 
         uint32_t current_status = 0;

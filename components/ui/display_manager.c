@@ -6,7 +6,7 @@
 #include "display_manager.h"
 #include "ui_screens.h"
 #include "menu_engine.h"
-#include "settings_manager.h" // Для чтения sys_settings.screenRotationIndex при старте
+#include "settings_manager.h"
 #include "hw_config.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -108,16 +108,15 @@ static void inactivity_timer_cb(void* arg) {
     display_handle_t handle = (display_handle_t)arg;
     if (!handle) return;
 
-    settings_lock();
-    uint32_t m_timeout = get_menu_timeout_ms(sys_settings.menuTimeoutOptionIndex);
-    uint32_t s_timeout = get_screen_timeout_ms(sys_settings.screenTimeoutOptionIndex);
-    uint32_t l_timeout = get_lock_timeout_ms(sys_settings.lockTimeIndex);
-    bool pass_enabled = sys_settings.passwordEnabled;
-    settings_unlock();
-
+    const cabinet_settings_t* cfg = settings_get_readonly();
+    uint32_t m_timeout = get_menu_timeout_ms(cfg->menu_timeout_index);
+    uint32_t s_timeout = get_screen_timeout_ms(cfg->screen_timeout_index);
+    uint32_t l_timeout = get_lock_timeout_ms(cfg->lock_time_index);
+    bool pass_enabled = cfg->password_enabled;
+    
     uint32_t current_time = (uint32_t)(esp_timer_get_time() / 1000ULL);
     uint32_t idle_time = current_time - last_activity_time_ms;
-
+    
     // 1. Выход из меню
     if (m_timeout > 0 && idle_time >= m_timeout && !is_timeout_event_sent) {
         hmi_msg_t msg = { .type = EVENT_SYSTEM_IDLE_TIMEOUT, .sensor_index = 0 };
@@ -219,7 +218,8 @@ esp_err_t display_manager_init(display_handle_t *out_handle) {
     *out_handle = mgr;
     
     // Применяем сохраненный поворот экрана
-    display_manager_set_rotation(*out_handle, sys_settings.screenRotationIndex);
+    const cabinet_settings_t* cfg = settings_get_readonly();
+    display_manager_set_rotation(*out_handle, cfg->screen_rotation_index);
 
     // Инициализируем время старта
     last_activity_time_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);

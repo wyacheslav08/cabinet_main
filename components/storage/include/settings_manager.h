@@ -122,6 +122,13 @@ esp_err_t settings_get_target_humidity(int *out_value);
  */
 esp_err_t settings_set_target_humidity(int value);
 
+/**
+ * @brief Быстрое получение времени удержания замка.
+ * @param[out] out_value Указатель для записи значения (мс).
+ * @return ESP_OK при успехе, ESP_ERR_INVALID_ARG если out_value NULL.
+ */
+esp_err_t settings_get_lock_hold_time(uint32_t *out_value);
+
 #ifdef __cplusplus
 }
 #endif

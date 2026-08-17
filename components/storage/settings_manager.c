@@ -242,3 +242,22 @@ esp_err_t settings_set_target_humidity(int value)
     
     return settings_save();
 }
+
+esp_err_t settings_get_lock_hold_time(uint32_t *out_value)
+{
+    if (out_value == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (s_settings_mutex != NULL) {
+        xSemaphoreTakeRecursive(s_settings_mutex, portMAX_DELAY);
+    }
+    
+    *out_value = s_sys_settings.lock_hold_time_ms;
+    
+    if (s_settings_mutex != NULL) {
+        xSemaphoreGiveRecursive(s_settings_mutex);
+    }
+    
+    return ESP_OK;
+}
