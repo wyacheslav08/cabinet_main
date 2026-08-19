@@ -300,22 +300,14 @@ esp_err_t display_manager_process_gesture(display_handle_t handle, hmi_event_typ
 esp_err_t display_manager_update_status(display_handle_t handle, const ui_status_data_t *data) {
     if (!handle || !data) return ESP_ERR_INVALID_ARG;
 
-    // Добавляем статический флаг первого запуска
-    //static bool is_first_update = true;
-
     // Сначала обновляем текст на экране (в фоне)
     if (lvgl_port_lock(pdMS_TO_TICKS(50))) {
         ui_screens_update_telemetry(data->temperature, data->humidity, data->wifi_rssi_percent, 
                                     data->is_ble_connected, data->is_locked, 
-                                    data->is_guitar_present, data->weight_grams);
+                                    data->is_guitar_present, data->weight_grams,
+                                    data->is_heating, data->is_humidifying, data->is_dehumidifying);
         lvgl_port_unlock();
     }
-
-    /*/ Как только отрисовались реальные цифры — включаем подсветку
-    if (is_first_update) {
-        is_first_update = false;
-        display_manager_set_power(handle, true);
-    }*/
 
     return ESP_OK;
 }
