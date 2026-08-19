@@ -23,7 +23,12 @@ void ui_screens_update_edit_value(const char* value_str);
 void ui_screens_update_layout(bool is_landscape);
 
 // Обновление телеметрии на Главном экране и в Статус-баре
-void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g);
+// Параметры: temp/hum - температура/влажность, rssi - уровень WiFi, ble - Bluetooth подключен,
+// locked - замок закрыт, guitar_present - гитара в шкафу, weight_g - вес в граммах,
+// is_heating/is_humidifying/is_dehumidifying - активность климат-систем
+void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, 
+                                  bool guitar_present, int32_t weight_g,
+                                  bool is_heating, bool is_humidifying, bool is_dehumidifying);
 
 // Обновление строк меню (теперь всего 3 аргумента)
 void ui_screens_render_menu(const char* items[5], int count, int selected_idx);

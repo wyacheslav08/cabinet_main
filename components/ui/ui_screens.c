@@ -17,15 +17,28 @@ LV_FONT_DECLARE(font_cyrillic_48);
 #define SYM_BLE           "\uF294"
 #define SYM_LOCK_CLOSED   "\uF023"
 #define SYM_LOCK_OPEN     "\uF09C"
+// Иконки климат-контроля (FontAwesome Free 6.x)
+#define SYM_HEATING       "\uF6D7"  // Термометр/обогрев
+#define SYM_HUMIDIFY      "\uF74F"  // Капля воды/увлажнение
+#define SYM_DEHUMIDIFY    "\uF750"  // Капля с минусом/осушение
+// Иконка гитары
+#define SYM_GUITAR        "\uF7A2"  // Силуэт гитары
 
 static lv_obj_t* cont_splash = NULL;
 static lv_obj_t* cont_main = NULL;
 static lv_obj_t* cont_menu = NULL;
 static lv_obj_t* cont_edit = NULL;
 static lv_obj_t* lbl_popup = NULL;
-static lv_obj_t* lbl_icon_wifi = NULL;
-static lv_obj_t* lbl_icon_ble = NULL;
-static lv_obj_t* lbl_icon_lock = NULL;
+// Иконки статус-бара главного экрана (правый верхний угол)
+static lv_obj_t* lbl_icon_wifi = NULL;   // Иконка WiFi (уровень сигнала)
+static lv_obj_t* lbl_icon_ble = NULL;    // Иконка Bluetooth (подключение)
+static lv_obj_t* lbl_icon_lock = NULL;   // Иконка замка (заблокировано/открыто)
+// Иконки климат-контроля (левая часть главного экрана)
+static lv_obj_t* lbl_icon_heating = NULL;    // Иконка обогрева (активен/неактивен)
+static lv_obj_t* lbl_icon_humidify = NULL;   // Иконка увлажнения (активен/неактивен)
+static lv_obj_t* lbl_icon_dehumidify = NULL; // Иконка осушения (активен/неактивен)
+// Иконка присутствия гитары
+static lv_obj_t* lbl_icon_guitar = NULL;     // Иконка гитары (присутствует/отсутствует)
 static lv_timer_t* lock_blink_timer = NULL;
 
 
@@ -194,31 +207,67 @@ void ui_screens_init(void) {
     lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0xFF8800), 0);
     lv_label_set_text(lbl_temp_unit, "°С");
 
+    // =========================================================================
+    // ИКОНКИ ГЛАВНОГО ЭКРАНА (Все возможные статусы)
+    // =========================================================================
+    
+    // --- Контейнер иконок в правом верхнем углу (WiFi, BLE, Lock) ---
+    lv_obj_t* icon_cont_right = lv_obj_create(cont_main);
+    lv_obj_set_size(icon_cont_right, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(icon_cont_right, LV_ALIGN_TOP_RIGHT, -10, 10);
+    lv_obj_set_layout(icon_cont_right, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(icon_cont_right, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(icon_cont_right, 8, 0); // Отступ между иконками
+    lv_obj_set_style_bg_opa(icon_cont_right, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(icon_cont_right, 0, 0);
+    lv_obj_set_scrollbar_mode(icon_cont_right, LV_SCROLLBAR_MODE_OFF);
 
-
-    // 4. В функции ui_screens_init() ЗАМЕНИ создание lbl_main_icons на этот блок:
-    // Контейнер для иконок в правом верхнем углу
-    lv_obj_t* icon_cont = lv_obj_create(cont_main);
-    lv_obj_set_size(icon_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_align(icon_cont, LV_ALIGN_TOP_RIGHT, -10, 10);
-    lv_obj_set_layout(icon_cont, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(icon_cont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(icon_cont, 8, 0); // Отступ между иконками
-    lv_obj_set_style_bg_opa(icon_cont, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(icon_cont, 0, 0);
-    lv_obj_set_scrollbar_mode(icon_cont, LV_SCROLLBAR_MODE_OFF);
-
-    lbl_icon_wifi = lv_label_create(icon_cont);
+    // Иконка WiFi (уровень сигнала сети)
+    lbl_icon_wifi = lv_label_create(icon_cont_right);
     lv_obj_set_style_text_font(lbl_icon_wifi, &font_cyrillic_16, 0);
     lv_obj_set_style_text_color(lbl_icon_wifi, lv_color_hex(0xFFFFFF), 0);
 
-    lbl_icon_ble = lv_label_create(icon_cont);
+    // Иконка Bluetooth (подключение устройства)
+    lbl_icon_ble = lv_label_create(icon_cont_right);
     lv_obj_set_style_text_font(lbl_icon_ble, &font_cyrillic_16, 0);
     lv_obj_set_style_text_color(lbl_icon_ble, lv_color_hex(0xFFFFFF), 0);
 
-    lbl_icon_lock = lv_label_create(icon_cont);
+    // Иконка замка (блокировка кабинета)
+    lbl_icon_lock = lv_label_create(icon_cont_right);
     lv_obj_set_style_text_font(lbl_icon_lock, &font_cyrillic_16, 0);
     lv_obj_set_style_text_color(lbl_icon_lock, lv_color_hex(0xFFFFFF), 0);
+   
+    // --- Контейнер иконок климат-контроля в левом верхнем углу ---
+    lv_obj_t* icon_cont_left = lv_obj_create(cont_main);
+    lv_obj_set_size(icon_cont_left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(icon_cont_left, LV_ALIGN_TOP_LEFT, 10, 10);
+    lv_obj_set_layout(icon_cont_left, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(icon_cont_left, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(icon_cont_left, 8, 0); // Отступ между иконками
+    lv_obj_set_style_bg_opa(icon_cont_left, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(icon_cont_left, 0, 0);
+    lv_obj_set_scrollbar_mode(icon_cont_left, LV_SCROLLBAR_MODE_OFF);
+
+    // Иконка обогрева (активность нагревателя)
+    lbl_icon_heating = lv_label_create(icon_cont_left);
+    lv_obj_set_style_text_font(lbl_icon_heating, &font_cyrillic_16, 0);
+    lv_obj_set_style_text_color(lbl_icon_heating, lv_color_hex(0xFF4400), 0); // Оранжево-красный
+
+    // Иконка увлажнения (активность увлажнителя)
+    lbl_icon_humidify = lv_label_create(icon_cont_left);
+    lv_obj_set_style_text_font(lbl_icon_humidify, &font_cyrillic_16, 0);
+    lv_obj_set_style_text_color(lbl_icon_humidify, lv_color_hex(0x0088FF), 0); // Голубой
+
+    // Иконка осушения (активность осушителя)
+    lbl_icon_dehumidify = lv_label_create(icon_cont_left);
+    lv_obj_set_style_text_font(lbl_icon_dehumidify, &font_cyrillic_16, 0);
+    lv_obj_set_style_text_color(lbl_icon_dehumidify, lv_color_hex(0x00FFFF), 0); // Циан
+
+    // --- Иконка присутствия гитары (нижняя часть, по центру под температурой) ---
+    lbl_icon_guitar = lv_label_create(cont_main);
+    lv_obj_set_style_text_font(lbl_icon_guitar, &font_cyrillic_20, 0);
+    lv_obj_set_style_text_color(lbl_icon_guitar, lv_color_hex(0x00FF00), 0); // Зеленый при наличии
+    lv_obj_align(lbl_icon_guitar, LV_ALIGN_BOTTOM_MID, 0, -50);
    
     // =========================================================================
     // 2. ЭКРАН МЕНЮ
@@ -527,7 +576,8 @@ void ui_screens_render_menu(const char* items[5], int count, int selected_idx) {
 }
 
 
-void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g) {
+void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g,
+                                  bool is_heating, bool is_humidifying, bool is_dehumidifying) {
     char s_h_int[8], s_h_frac[8], s_t_int[8], s_t_frac[8];
     char str_climate_mini[32];
 
@@ -551,25 +601,44 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
         snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
     }
 
-        char str_icons[32];
+    char str_icons[32];
     snprintf(str_icons, sizeof(str_icons), "%s %s %s", rssi > 0 ? SYM_WIFI : " ", ble ? SYM_BLE : " ", locked ? SYM_LOCK_CLOSED : SYM_LOCK_OPEN);
 
-    // Обновляем текст
+    // Обновляем текст основных виджетов
     if (lbl_hum_int) lv_label_set_text(lbl_hum_int, s_h_int);
     if (lbl_hum_frac) lv_label_set_text(lbl_hum_frac, s_h_frac);
     if (lbl_temp_int) lv_label_set_text(lbl_temp_int, s_t_int);
     if (lbl_temp_frac) lv_label_set_text(lbl_temp_frac, s_t_frac);
     
-    // Старая строка иконок для меню
+    // Старая строка иконок для меню (статус-бар экрана меню)
     if (lbl_status_icons) lv_label_set_text(lbl_status_icons, str_icons);
     if (lbl_status_climate) lv_label_set_text(lbl_status_climate, str_climate_mini);
 
-    // === НОВЫЕ РАЗДЕЛЬНЫЕ ИКОНКИ ДЛЯ ГЛАВНОГО ЭКРАНА ===
+    // =========================================================================
+    // ОБНОВЛЕНИЕ ВСЕХ ИКОНОК ГЛАВНОГО ЭКРАНА
+    // =========================================================================
+    
+    // --- Иконки правого верхнего угла (системные) ---
+    // Иконка WiFi: показываем символ при наличии сети, пусто - если нет
     if (lbl_icon_wifi) lv_label_set_text(lbl_icon_wifi, rssi > 0 ? SYM_WIFI : "");
+    // Иконка Bluetooth: показываем символ при подключении
     if (lbl_icon_ble)  lv_label_set_text(lbl_icon_ble, ble ? SYM_BLE : "");
+    // Иконка замка: закрытый/открытый в зависимости от статуса блокировки
     if (lbl_icon_lock) lv_label_set_text(lbl_icon_lock, locked ? SYM_LOCK_CLOSED : SYM_LOCK_OPEN);
+    
+    // --- Иконки климат-контроля (левый верхний угол) ---
+    // Иконка обогрева: показываем только при активном нагреве
+    if (lbl_icon_heating) lv_label_set_text(lbl_icon_heating, is_heating ? SYM_HEATING : "");
+    // Иконка увлажнения: показываем только при активном увлажнителе
+    if (lbl_icon_humidify) lv_label_set_text(lbl_icon_humidify, is_humidifying ? SYM_HUMIDIFY : "");
+    // Иконка осушения: показываем только при активном осушителе
+    if (lbl_icon_dehumidify) lv_label_set_text(lbl_icon_dehumidify, is_dehumidifying ? SYM_DEHUMIDIFY : "");
+    
+    // --- Иконка присутствия гитары (центр внизу) ---
+    // Показываем символ гитары зеленым цветом при наличии инструмента
+    if (lbl_icon_guitar) lv_label_set_text(lbl_icon_guitar, guitar_present ? SYM_GUITAR : "");
 
-    // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT)
+    // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT) для дробных значений
     if (lbl_hum_frac && lbl_hum_int) {
         lv_obj_align_to(lbl_hum_frac, lbl_hum_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
     }
