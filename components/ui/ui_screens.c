@@ -13,16 +13,16 @@ LV_FONT_DECLARE(font_cyrillic_16);
 LV_FONT_DECLARE(font_cyrillic_20);
 LV_FONT_DECLARE(font_cyrillic_48);
 
-#define SYM_WIFI          "\uF1EB"
-#define SYM_BLE           "\uF294"
-#define SYM_LOCK_CLOSED   "\uF023"
-#define SYM_LOCK_OPEN     "\uF09C"
+#define SYM_WIFI          "\uF1EB"  // Иконка WiFi (сигнал сети)
+#define SYM_BLE           "\uF294"  // Иконка Bluetooth (подключение)
+#define SYM_LOCK_CLOSED   "\uF023"  // Иконка замка закрытого
+#define SYM_LOCK_OPEN     "\uF09C"  // Иконка замка открытого
 // Иконки климат-контроля (FontAwesome Free 6.x)
-#define SYM_HEATING       "\uF6D7"  // Термометр/обогрев
-#define SYM_HUMIDIFY      "\uF74F"  // Капля воды/увлажнение
-#define SYM_DEHUMIDIFY    "\uF750"  // Капля с минусом/осушение
+#define SYM_HEATING       "\uF6D7"  // Термометр/обогрев - оранжево-красный (0xFF4400)
+#define SYM_HUMIDIFY      "\uF74F"  // Капля воды/увлажнение - голубой (0x0088FF)
+#define SYM_DEHUMIDIFY    "\uF750"  // Капля с минусом/осушение - циан (0x00FFFF)
 // Иконка гитары
-#define SYM_GUITAR        "\uF7A2"  // Силуэт гитары
+#define SYM_GUITAR        "\uF7A2"  // Силуэт гитары - зеленый (0x00FF00)
 
 static lv_obj_t* cont_splash = NULL;
 static lv_obj_t* cont_main = NULL;
@@ -179,32 +179,32 @@ void ui_screens_init(void) {
     lv_obj_set_style_border_width(cont_main, 0, 0);
     lv_obj_set_scrollbar_mode(cont_main, LV_SCROLLBAR_MODE_OFF);
 
-    // Влажность
+    // Влажность - СИНИЙ ЦВЕТ (0x0088FF) для контраста с оранжевыми иконками климата
     lbl_hum_int = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_int, &font_cyrillic_48, 0);
-    lv_obj_set_style_text_color(lbl_hum_int, lv_color_hex(0xFF8800), 0);
+    lv_obj_set_style_text_color(lbl_hum_int, lv_color_hex(0x0088FF), 0);
     
     lbl_hum_frac = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_frac, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_hum_frac, lv_color_hex(0xFF8800), 0);
+    lv_obj_set_style_text_color(lbl_hum_frac, lv_color_hex(0x0088FF), 0);
     
     lbl_hum_unit = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_hum_unit, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_hum_unit, lv_color_hex(0xFF8800), 0);
+    lv_obj_set_style_text_color(lbl_hum_unit, lv_color_hex(0x0088FF), 0);
     lv_label_set_text(lbl_hum_unit, "%н");
 
-    // Температура
+    // Температура - СИНИЙ ЦВЕТ (0x0088FF) для контраста с оранжевыми иконками климата
     lbl_temp_int = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_int, &font_cyrillic_48, 0);
-    lv_obj_set_style_text_color(lbl_temp_int, lv_color_hex(0xFF8800), 0);
+    lv_obj_set_style_text_color(lbl_temp_int, lv_color_hex(0x0088FF), 0);
     
     lbl_temp_frac = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_frac, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_temp_frac, lv_color_hex(0xFF8800), 0);
+    lv_obj_set_style_text_color(lbl_temp_frac, lv_color_hex(0x0088FF), 0);
     
     lbl_temp_unit = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_temp_unit, &font_cyrillic_12, 0);
-    lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0xFF8800), 0);
+    lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0x0088FF), 0);
     lv_label_set_text(lbl_temp_unit, "°С");
 
     // =========================================================================
@@ -616,6 +616,8 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
 
     // =========================================================================
     // ОБНОВЛЕНИЕ ВСЕХ ИКОНОК ГЛАВНОГО ЭКРАНА
+    // Для отладки: отображаем ВСЕ иконки ПОСТОЯННО (игнорируем статус активности)
+    // Это позволит проверить видимость и цвета всех иконок на дисплее
     // =========================================================================
     
     // --- Иконки правого верхнего угла (системные) ---
@@ -627,16 +629,19 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
     if (lbl_icon_lock) lv_label_set_text(lbl_icon_lock, locked ? SYM_LOCK_CLOSED : SYM_LOCK_OPEN);
     
     // --- Иконки климат-контроля (левый верхний угол) ---
-    // Иконка обогрева: показываем только при активном нагреве
-    if (lbl_icon_heating) lv_label_set_text(lbl_icon_heating, is_heating ? SYM_HEATING : "");
-    // Иконка увлажнения: показываем только при активном увлажнителе
-    if (lbl_icon_humidify) lv_label_set_text(lbl_icon_humidify, is_humidifying ? SYM_HUMIDIFY : "");
-    // Иконка осушения: показываем только при активном осушителе
-    if (lbl_icon_dehumidify) lv_label_set_text(lbl_icon_dehumidify, is_dehumidifying ? SYM_DEHUMIDIFY : "");
+    // ВНИМАНИЕ: Для отладки отображаем иконки ПОСТОЯННО, чтобы проверить их видимость и цвета
+    // Иконка обогрева: оранжево-красный цвет (0xFF4400) - см. определение в инициализации
+    if (lbl_icon_heating) lv_label_set_text(lbl_icon_heating, SYM_HEATING);  // Было: is_heating ? SYM_HEATING : ""
+    
+    // Иконка увлажнения: голубой цвет (0x0088FF) - см. определение в инициализации
+    if (lbl_icon_humidify) lv_label_set_text(lbl_icon_humidify, SYM_HUMIDIFY);  // Было: is_humidifying ? SYM_HUMIDIFY : ""
+    
+    // Иконка осушения: циан (0x00FFFF) - см. определение в инициализации
+    if (lbl_icon_dehumidify) lv_label_set_text(lbl_icon_dehumidify, SYM_DEHUMIDIFY);  // Было: is_dehumidifying ? SYM_DEHUMIDIFY : ""
     
     // --- Иконка присутствия гитары (центр внизу) ---
-    // Показываем символ гитары зеленым цветом при наличии инструмента
-    if (lbl_icon_guitar) lv_label_set_text(lbl_icon_guitar, guitar_present ? SYM_GUITAR : "");
+    // ВНИМАНИЕ: Для отладки отображаем иконку ПОСТОЯННО зеленым цветом (0x00FF00)
+    if (lbl_icon_guitar) lv_label_set_text(lbl_icon_guitar, SYM_GUITAR);  // Было: guitar_present ? SYM_GUITAR : ""
 
     // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT) для дробных значений
     if (lbl_hum_frac && lbl_hum_int) {
