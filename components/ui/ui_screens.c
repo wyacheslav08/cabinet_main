@@ -238,7 +238,7 @@ void ui_screens_init(void) {
     lv_obj_set_style_text_color(lbl_temp_unit, lv_color_hex(0x0088FF), 0);
     lv_label_set_text(lbl_temp_unit, "°С");
 
-    // =========================================================================
+    /*/ =========================================================================
     // ИКОНКИ ГЛАВНОГО ЭКРАНА (Все возможные иконки из словаря)
     // =========================================================================
     
@@ -388,6 +388,7 @@ void ui_screens_init(void) {
     lv_obj_set_style_text_font(lbl_icon_tap, &font_cyrillic_16, 0);
     lv_obj_set_style_text_color(lbl_icon_tap, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_text(lbl_icon_tap, SYM_TAP);
+    */
    
     // =========================================================================
     // 2. ЭКРАН МЕНЮ
@@ -698,37 +699,36 @@ void ui_screens_render_menu(const char* items[5], int count, int selected_idx) {
 
 void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, bool locked, bool guitar_present, int32_t weight_g,
                                   bool is_heating, bool is_humidifying, bool is_dehumidifying) {
-    // Временно отключаем вывод температуры и влажности по запросу пользователя
-    // char s_h_int[8], s_h_frac[8], s_t_int[8], s_t_frac[8];
-    // char str_climate_mini[32];
+     char s_h_int[8], s_h_frac[8], s_t_int[8], s_t_frac[8];
+     char str_climate_mini[32];
 
     // Если данные невалидны (ошибка датчика)
-    // if (temp <= -90.0f || hum <= -90.0f) {
-    //     snprintf(s_h_int, sizeof(s_h_int), "--");
-    //     snprintf(s_h_frac, sizeof(s_h_frac), ".--");
-    //     snprintf(s_t_int, sizeof(s_t_int), "--");
-    //     snprintf(s_t_frac, sizeof(s_t_frac), ".--");
-    //     snprintf(str_climate_mini, sizeof(str_climate_mini), "--.-°C --%%");
-    // } else {
-    //     int hum_int = (int)hum;
-    //     int hum_frac = (int)(fabs(hum - hum_int) * 10.0f);
-    //     int temp_int = (int)temp;
-    //     int temp_frac = (int)(fabs(temp - temp_int) * 10.0f);
-    //     snprintf(s_h_int, sizeof(s_h_int), "%d", hum_int);
-    //     snprintf(s_h_frac, sizeof(s_h_frac), ".%01d", hum_frac);
-    //     snprintf(s_t_int, sizeof(s_t_int), "%d", temp_int);
-    //     snprintf(s_t_frac, sizeof(s_t_frac), ".%01d", temp_frac);
-    //     snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
-    // }
+     if (temp <= -90.0f || hum <= -90.0f) {
+         snprintf(s_h_int, sizeof(s_h_int), "--");
+         snprintf(s_h_frac, sizeof(s_h_frac), ".--");
+         snprintf(s_t_int, sizeof(s_t_int), "--");
+         snprintf(s_t_frac, sizeof(s_t_frac), ".--");
+         snprintf(str_climate_mini, sizeof(str_climate_mini), "--.-°C --%%");
+     } else {
+         int hum_int = (int)hum;
+         int hum_frac = (int)(fabs(hum - hum_int) * 10.0f);
+         int temp_int = (int)temp;
+         int temp_frac = (int)(fabs(temp - temp_int) * 10.0f);
+         snprintf(s_h_int, sizeof(s_h_int), "%d", hum_int);
+         snprintf(s_h_frac, sizeof(s_h_frac), ".%01d", hum_frac);
+         snprintf(s_t_int, sizeof(s_t_int), "%d", temp_int);
+         snprintf(s_t_frac, sizeof(s_t_frac), ".%01d", temp_frac);
+         snprintf(str_climate_mini, sizeof(str_climate_mini), "%.1f°C %.0f%%", temp, hum);
+     }
 
     char str_icons[64];
     snprintf(str_icons, sizeof(str_icons), "%s %s %s", SYM_WIFI, SYM_BLE, SYM_LOCK_CLOSED);
 
     // Обновляем текст основных виджетов (температура/влажность временно отключены)
-    // if (lbl_hum_int) lv_label_set_text(lbl_hum_int, s_h_int);
-    // if (lbl_hum_frac) lv_label_set_text(lbl_hum_frac, s_h_frac);
-    // if (lbl_temp_int) lv_label_set_text(lbl_temp_int, s_t_int);
-    // if (lbl_temp_frac) lv_label_set_text(lbl_temp_frac, s_t_frac);
+     if (lbl_hum_int) lv_label_set_text(lbl_hum_int, s_h_int);
+     if (lbl_hum_frac) lv_label_set_text(lbl_hum_frac, s_h_frac);
+     if (lbl_temp_int) lv_label_set_text(lbl_temp_int, s_t_int);
+     if (lbl_temp_frac) lv_label_set_text(lbl_temp_frac, s_t_frac);
     
     // Старая строка иконок для меню (статус-бар экрана меню)
     if (lbl_status_icons) lv_label_set_text(lbl_status_icons, str_icons);
@@ -769,7 +769,18 @@ void ui_screens_update_telemetry(float temp, float hum, uint8_t rssi, bool ble, 
 
     // КРИТИЧНО: Заставляем LVGL пересчитать привязки (ALIGN_OUT) для дробных значений
     // (временно отключено вместе с температурой/влажностью)
-    // if (lbl_hum_frac && lbl_hum_int) { ... }
+     if (lbl_hum_frac && lbl_hum_int) {
+        lv_obj_align_to(lbl_hum_frac, lbl_hum_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
+    }
+    if (lbl_hum_unit && lbl_hum_int) {
+        lv_obj_align_to(lbl_hum_unit, lbl_hum_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
+    }
+    if (lbl_temp_frac && lbl_temp_int) {
+        lv_obj_align_to(lbl_temp_frac, lbl_temp_int, LV_ALIGN_OUT_RIGHT_BOTTOM, 0, -6);
+    }
+    if (lbl_temp_unit && lbl_temp_int) {
+        lv_obj_align_to(lbl_temp_unit, lbl_temp_int, LV_ALIGN_OUT_RIGHT_TOP, 0, 6);
+    }
 }
 
 void ui_screens_show_popup(const char* text) {

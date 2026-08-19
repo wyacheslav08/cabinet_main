@@ -1,0 +1,63 @@
+Command: cmake -G Ninja -DPYTHON_DEPS_CHECKED=1 -DPYTHON=C:\Espressif\tools\python\v5.5.4\venv\Scripts\python.exe -DESP_PLATFORM=1 -DCCACHE_ENABLE=1 E:\ESP\Project\CABINET_main_gatewa\cabinet_main
+-- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.54.0.windows.1")
+-- Minimal build - OFF
+-- ccache will be used for faster recompilation
+-- The C compiler identification is GNU 14.2.0
+-- The CXX compiler identification is GNU 14.2.0
+-- The ASM compiler identification is GNU
+-- Found assembler: C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc.exe
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32-elf-g++.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Building ESP-IDF components for target esp32
+NOTICE: 
+Following dependencies have new versions available:
+Dependency "espressif/esp_lvgl_port": "2.8.0~1" -> "2.9.0"
+Consider running "idf.py update-dependencies" to update your lock file.
+NOTICE: Processing 4 dependencies:
+NOTICE: [1/4] espressif/esp-dsp (1.8.2)
+NOTICE: [2/4] espressif/esp_lvgl_port (2.8.0~1)
+NOTICE: [3/4] lvgl/lvgl (9.4.0)
+NOTICE: [4/4] idf (5.5.4)
+-- ESP-TEE is currently supported only on the esp32c6;esp32h2;esp32c5 SoCs
+-- Project sdkconfig file E:/ESP/Project/CABINET_main_gatewa/cabinet_main/sdkconfig
+-- Compiler supported targets: xtensa-esp-elf
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Found Python3: C:/Espressif/tools/python/v5.5.4/venv/Scripts/python.exe (found version "3.14.6") found components: Interpreter
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Performing Test C_COMPILER_SUPPORTS_WFORMAT_SIGNEDNESS
+-- Performing Test C_COMPILER_SUPPORTS_WFORMAT_SIGNEDNESS - Success
+-- USING O3
+-- App "cabinet_main" version: 630201a
+-- Adding linker script E:/ESP/Project/CABINET_main_gatewa/cabinet_main/build/esp-idf/esp_system/ld/memory.ld
+-- Adding linker script E:/ESP/Project/CABINET_main_gatewa/cabinet_main/build/esp-idf/esp_system/ld/sections.ld.in
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.api.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.libgcc.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.newlib-data.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.syscalls.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.libc-funcs.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/esp_rom/esp32/ld/esp32.rom.newlib-reent-funcs.ld
+-- Adding linker script E:/.espressif/v5.5.4/esp-idf/components/soc/esp32/ld/esp32.peripherals.ld
+-- LVGL version: 9.4.0
+-- Components: app_trace app_update bootloader bootloader_support bt cabinet_hal cmock comm console cxx driver dsp_audio efuse esp-tls esp_adc esp_app_format esp_bootloader_format esp_coex esp_common esp_driver_ana_cmpr esp_driver_bitscrambler esp_driver_cam esp_driver_dac esp_driver_gpio esp_driver_gptimer esp_driver_i2c esp_driver_i2s esp_driver_isp esp_driver_jpeg esp_driver_ledc esp_driver_mcpwm esp_driver_parlio esp_driver_pcnt esp_driver_ppa esp_driver_rmt esp_driver_sdio esp_driver_sdm esp_driver_sdmmc esp_driver_sdspi esp_driver_spi esp_driver_touch_sens esp_driver_tsens esp_driver_twai esp_driver_uart esp_driver_usb_serial_jtag esp_eth esp_event esp_gdbstub esp_hal_ieee802154 esp_hid esp_http_client esp_http_server esp_https_ota esp_https_server esp_hw_support esp_lcd esp_lcd_st7735-main esp_local_ctrl esp_mm esp_netif esp_netif_stack esp_partition esp_phy esp_pm esp_psram esp_ringbuf esp_rom esp_security esp_system esp_timer esp_vfs_console esp_wifi espcoredump espressif__esp-dsp espressif__esp_lvgl_port esptool_py fatfs freertos hal heap http_parser idf_test ieee802154 json log logic lvgl__lvgl lwip main mbedtls mqtt newlib nvs_flash nvs_sec_provider openthread partition_table perfmon protobuf-c protocomm pthread rt sdmmc sensors soc spi_flash spiffs storage tcp_transport ui ulp unity usb vfs wear_levelling wifi_provisioning wpa_supplicant xtensa
+-- Component paths: E:/.espressif/v5.5.4/esp-idf/components/app_trace E:/.espressif/v5.5.4/esp-idf/components/app_update E:/.espressif/v5.5.4/esp-idf/components/bootloader E:/.espressif/v5.5.4/esp-idf/components/bootloader_support E:/.espressif/v5.5.4/esp-idf/components/bt E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/cabinet_hal E:/.espressif/v5.5.4/esp-idf/components/cmock E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/comm E:/.espressif/v5.5.4/esp-idf/components/console E:/.espressif/v5.5.4/esp-idf/components/cxx E:/.espressif/v5.5.4/esp-idf/components/driver E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/dsp_audio E:/.espressif/v5.5.4/esp-idf/components/efuse E:/.espressif/v5.5.4/esp-idf/components/esp-tls E:/.espressif/v5.5.4/esp-idf/components/esp_adc E:/.espressif/v5.5.4/esp-idf/components/esp_app_format E:/.espressif/v5.5.4/esp-idf/components/esp_bootloader_format E:/.espressif/v5.5.4/esp-idf/components/esp_coex E:/.espressif/v5.5.4/esp-idf/components/esp_common E:/.espressif/v5.5.4/esp-idf/components/esp_driver_ana_cmpr E:/.espressif/v5.5.4/esp-idf/components/esp_driver_bitscrambler E:/.espressif/v5.5.4/esp-idf/components/esp_driver_cam E:/.espressif/v5.5.4/esp-idf/components/esp_driver_dac E:/.espressif/v5.5.4/esp-idf/components/esp_driver_gpio E:/.espressif/v5.5.4/esp-idf/components/esp_driver_gptimer E:/.espressif/v5.5.4/esp-idf/components/esp_driver_i2c E:/.espressif/v5.5.4/esp-idf/components/esp_driver_i2s E:/.espressif/v5.5.4/esp-idf/components/esp_driver_isp E:/.espressif/v5.5.4/esp-idf/components/esp_driver_jpeg E:/.espressif/v5.5.4/esp-idf/components/esp_driver_ledc E:/.espressif/v5.5.4/esp-idf/components/esp_driver_mcpwm E:/.espressif/v5.5.4/esp-idf/components/esp_driver_parlio E:/.espressif/v5.5.4/esp-idf/components/esp_driver_pcnt E:/.espressif/v5.5.4/esp-idf/components/esp_driver_ppa E:/.espressif/v5.5.4/esp-idf/components/esp_driver_rmt E:/.espressif/v5.5.4/esp-idf/components/esp_driver_sdio E:/.espressif/v5.5.4/esp-idf/components/esp_driver_sdm E:/.espressif/v5.5.4/esp-idf/components/esp_driver_sdmmc E:/.espressif/v5.5.4/esp-idf/components/esp_driver_sdspi E:/.espressif/v5.5.4/esp-idf/components/esp_driver_spi E:/.espressif/v5.5.4/esp-idf/components/esp_driver_touch_sens E:/.espressif/v5.5.4/esp-idf/components/esp_driver_tsens E:/.espressif/v5.5.4/esp-idf/components/esp_driver_twai E:/.espressif/v5.5.4/esp-idf/components/esp_driver_uart E:/.espressif/v5.5.4/esp-idf/components/esp_driver_usb_serial_jtag E:/.espressif/v5.5.4/esp-idf/components/esp_eth E:/.espressif/v5.5.4/esp-idf/components/esp_event E:/.espressif/v5.5.4/esp-idf/components/esp_gdbstub E:/.espressif/v5.5.4/esp-idf/components/esp_hal_ieee802154 E:/.espressif/v5.5.4/esp-idf/components/esp_hid E:/.espressif/v5.5.4/esp-idf/components/esp_http_client E:/.espressif/v5.5.4/esp-idf/components/esp_http_server E:/.espressif/v5.5.4/esp-idf/components/esp_https_ota E:/.espressif/v5.5.4/esp-idf/components/esp_https_server E:/.espressif/v5.5.4/esp-idf/components/esp_hw_support E:/.espressif/v5.5.4/esp-idf/components/esp_lcd E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/esp_lcd_st7735-main E:/.espressif/v5.5.4/esp-idf/components/esp_local_ctrl E:/.espressif/v5.5.4/esp-idf/components/esp_mm E:/.espressif/v5.5.4/esp-idf/components/esp_netif E:/.espressif/v5.5.4/esp-idf/components/esp_netif_stack E:/.espressif/v5.5.4/esp-idf/components/esp_partition E:/.espressif/v5.5.4/esp-idf/components/esp_phy E:/.espressif/v5.5.4/esp-idf/components/esp_pm E:/.espressif/v5.5.4/esp-idf/components/esp_psram E:/.espressif/v5.5.4/esp-idf/components/esp_ringbuf E:/.espressif/v5.5.4/esp-idf/components/esp_rom E:/.espressif/v5.5.4/esp-idf/components/esp_security E:/.espressif/v5.5.4/esp-idf/components/esp_system E:/.espressif/v5.5.4/esp-idf/components/esp_timer E:/.espressif/v5.5.4/esp-idf/components/esp_vfs_console E:/.espressif/v5.5.4/esp-idf/components/esp_wifi E:/.espressif/v5.5.4/esp-idf/components/espcoredump E:/ESP/Project/CABINET_main_gatewa/cabinet_main/managed_components/espressif__esp-dsp E:/ESP/Project/CABINET_main_gatewa/cabinet_main/managed_components/espressif__esp_lvgl_port E:/.espressif/v5.5.4/esp-idf/components/esptool_py E:/.espressif/v5.5.4/esp-idf/components/fatfs E:/.espressif/v5.5.4/esp-idf/components/freertos E:/.espressif/v5.5.4/esp-idf/components/hal E:/.espressif/v5.5.4/esp-idf/components/heap E:/.espressif/v5.5.4/esp-idf/components/http_parser E:/.espressif/v5.5.4/esp-idf/components/idf_test E:/.espressif/v5.5.4/esp-idf/components/ieee802154 E:/.espressif/v5.5.4/esp-idf/components/json E:/.espressif/v5.5.4/esp-idf/components/log E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/logic E:/ESP/Project/CABINET_main_gatewa/cabinet_main/managed_components/lvgl__lvgl E:/.espressif/v5.5.4/esp-idf/components/lwip E:/ESP/Project/CABINET_main_gatewa/cabinet_main/main E:/.espressif/v5.5.4/esp-idf/components/mbedtls E:/.espressif/v5.5.4/esp-idf/components/mqtt E:/.espressif/v5.5.4/esp-idf/components/newlib E:/.espressif/v5.5.4/esp-idf/components/nvs_flash E:/.espressif/v5.5.4/esp-idf/components/nvs_sec_provider E:/.espressif/v5.5.4/esp-idf/components/openthread E:/.espressif/v5.5.4/esp-idf/components/partition_table E:/.espressif/v5.5.4/esp-idf/components/perfmon E:/.espressif/v5.5.4/esp-idf/components/protobuf-c E:/.espressif/v5.5.4/esp-idf/components/protocomm E:/.espressif/v5.5.4/esp-idf/components/pthread E:/.espressif/v5.5.4/esp-idf/components/rt E:/.espressif/v5.5.4/esp-idf/components/sdmmc E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/sensors E:/.espressif/v5.5.4/esp-idf/components/soc E:/.espressif/v5.5.4/esp-idf/components/spi_flash E:/.espressif/v5.5.4/esp-idf/components/spiffs E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/storage E:/.espressif/v5.5.4/esp-idf/components/tcp_transport E:/ESP/Project/CABINET_main_gatewa/cabinet_main/components/ui E:/.espressif/v5.5.4/esp-idf/components/ulp E:/.espressif/v5.5.4/esp-idf/components/unity E:/.espressif/v5.5.4/esp-idf/components/usb E:/.espressif/v5.5.4/esp-idf/components/vfs E:/.espressif/v5.5.4/esp-idf/components/wear_levelling E:/.espressif/v5.5.4/esp-idf/components/wifi_provisioning E:/.espressif/v5.5.4/esp-idf/components/wpa_supplicant E:/.espressif/v5.5.4/esp-idf/components/xtensa
+-- Configuring done (36.6s)
+-- Generating done (1.2s)
+-- Build files have been written to: E:/ESP/Project/CABINET_main_gatewa/cabinet_main/build
