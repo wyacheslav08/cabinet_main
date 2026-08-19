@@ -15,6 +15,7 @@ LV_FONT_DECLARE(font_cyrillic_48);
 
 /* =========================================================================
  * СЛОВАРЬ ИКОНОК (FONT AWESOME 6 SOLID)
+ * Цвета указаны в формате BGR (так как большинство дисплеев используют BGR порядок)
  * ========================================================================= */
 #define SYM_SWIPE_UP      "\uF0A6" // Рука указывает вверх
 #define SYM_SWIPE_DOWN    "\uF0A7" // Рука указывает вниз
@@ -26,15 +27,15 @@ LV_FONT_DECLARE(font_cyrillic_48);
 #define SYM_LOCK_OPEN     "\uF09C" // Замок открыт (белый 0xFFFFFF)
 #define SYM_WIFI          "\uF1EB" // Wi-Fi сигнал (белый 0xFFFFFF)
 #define SYM_BLE           "\uF294" // Bluetooth BLE (белый 0xFFFFFF)
-#define SYM_SCALES        "\uF24E" // Весы/Баланс (желтый 0xFFFF00)
-#define SYM_SOUND         "\uF028" // Звуковой сигнал/Динамик (оранжевый 0xFFA500)
-#define SYM_MUSIC         "\uF001" // Нотный ключ/Нота (фиолетовый 0xAA00FF)
+#define SYM_SCALES        "\uF24E" // Весы/Баланс (светло-голубой 0x00CCFF в BGR = 0xFFCC00 в RGB)
+#define SYM_SOUND         "\uF028" // Звуковой сигнал/Динамик (синий 0xFF0000 в BGR = 0x0000FF в RGB)
+#define SYM_MUSIC         "\uF001" // Нотный ключ/Нота (фиолетовый 0xAA00FF - без изменений, симметричный)
 #define SYM_VIBRO         "\uF3CD" // Вибрация/Телефон с волнами (серый 0x888888)
-#define SYM_GUITAR        "\uF7A6" // Гитара (зеленый 0x00FF00)
-#define SYM_BRIGHTNESS    "\uF185" // Подсветка/Солнце (желтый 0xFFDD00)
-#define SYM_HUMIDIFIER    "\uF043" // Увлажнитель/Капля воды (голубой 0x0088FF)
-#define SYM_DEHUMIDIFIER  "\uF5C7" // Осушитель/Перечеркнутая капля (циан 0x00FFFF)
-#define SYM_HEATING       "\uF06D" // Нагрев/Пламя (оранжево-красный 0xFF4400)
+#define SYM_GUITAR        "\uF7A6" // Гитара (светло-зеленый 0x99FF99 в BGR)
+#define SYM_BRIGHTNESS    "\uF185" // Подсветка/Солнце (синий 0xFF0000 в BGR = 0x0000FF в RGB)
+#define SYM_HUMIDIFIER    "\uF043" // Увлажнитель/Капля воды (оранжевый 0x0080FF в BGR = 0xFF8000 в RGB)
+#define SYM_DEHUMIDIFIER  "\uF5C7" // Осушитель/Перечеркнутая капля (циан 0xFFFF00 в BGR = 0x00FFFF в RGB)
+#define SYM_HEATING       "\uF06D" // Нагрев/Пламя (синий 0x0000FF в BGR = 0xFF0000 в RGB)
 
 static lv_obj_t* cont_splash = NULL;
 static lv_obj_t* cont_main = NULL;
@@ -281,28 +282,28 @@ void ui_screens_init(void) {
     lv_obj_set_style_border_width(icon_cont_left, 0, 0);
     lv_obj_set_scrollbar_mode(icon_cont_left, LV_SCROLLBAR_MODE_OFF);
 
-    // Иконка обогрева/пламя - оранжево-красный цвет (0xFF4400)
+    // Иконка обогрева/пламя - КРАСНЫЙ (0xFF0000 в RGB)
     lbl_icon_heating = lv_label_create(icon_cont_left);
     lv_obj_set_style_text_font(lbl_icon_heating, &font_cyrillic_16, 0);
-    lv_obj_set_style_text_color(lbl_icon_heating, lv_color_hex(0xFF4400), 0);
+    lv_obj_set_style_text_color(lbl_icon_heating, lv_color_hex(0xFF0000), 0);
     lv_label_set_text(lbl_icon_heating, SYM_HEATING);
 
-    // Иконка увлажнителя/капля - голубой цвет (0x0088FF)
+    // Иконка увлажнителя/капля - ОРАНЖЕВЫЙ (0xFF8000 в RGB)
     lbl_icon_humidifier = lv_label_create(icon_cont_left);
     lv_obj_set_style_text_font(lbl_icon_humidifier, &font_cyrillic_16, 0);
-    lv_obj_set_style_text_color(lbl_icon_humidifier, lv_color_hex(0x0088FF), 0);
+    lv_obj_set_style_text_color(lbl_icon_humidifier, lv_color_hex(0xFF8000), 0);
     lv_label_set_text(lbl_icon_humidifier, SYM_HUMIDIFIER);
 
-    // Иконка осушителя/перечеркнутая капля - циан цвет (0x00FFFF)
+    // Иконка осушителя/перечеркнутая капля - СИНИЙ (0x0000FF в RGB)
     lbl_icon_dehumidifier = lv_label_create(icon_cont_left);
     lv_obj_set_style_text_font(lbl_icon_dehumidifier, &font_cyrillic_16, 0);
-    lv_obj_set_style_text_color(lbl_icon_dehumidifier, lv_color_hex(0x00FFFF), 0);
+    lv_obj_set_style_text_color(lbl_icon_dehumidifier, lv_color_hex(0x0000FF), 0);
     lv_label_set_text(lbl_icon_dehumidifier, SYM_DEHUMIDIFIER);
 
-    // --- Иконка присутствия гитары (нижняя часть, по центру) - зеленый цвет (0x00FF00) ---
+    // --- Иконка присутствия гитары (нижняя часть, по центру) - СВЕТЛО-ЗЕЛЕНЫЙ (0x99FF99 в RGB) ---
     lbl_icon_guitar = lv_label_create(cont_main);
     lv_obj_set_style_text_font(lbl_icon_guitar, &font_cyrillic_20, 0);
-    lv_obj_set_style_text_color(lbl_icon_guitar, lv_color_hex(0x00FF00), 0);
+    lv_obj_set_style_text_color(lbl_icon_guitar, lv_color_hex(0x99FF99), 0);
     lv_label_set_text(lbl_icon_guitar, SYM_GUITAR);
     lv_obj_align(lbl_icon_guitar, LV_ALIGN_BOTTOM_MID, 0, -50);
 
@@ -317,34 +318,34 @@ void ui_screens_init(void) {
     lv_obj_set_style_border_width(icon_cont_center, 0, 0);
     lv_obj_set_scrollbar_mode(icon_cont_center, LV_SCROLLBAR_MODE_OFF);
 
-    // Иконка весов/баланс - желтый цвет (0xFFFF00)
+    // Иконка весов/баланс - СВЕТЛО-ГОЛУБОЙ (0x00CCFF в RGB)
     lbl_icon_scales = lv_label_create(icon_cont_center);
     lv_obj_set_style_text_font(lbl_icon_scales, &font_cyrillic_16, 0);
-    lv_obj_set_style_text_color(lbl_icon_scales, lv_color_hex(0xFFFF00), 0);
+    lv_obj_set_style_text_color(lbl_icon_scales, lv_color_hex(0x00CCFF), 0);
     lv_label_set_text(lbl_icon_scales, SYM_SCALES);
 
-    // Иконка звука/динамик - оранжевый цвет (0xFFA500)
+    // Иконка звука/динамик - СИНИЙ (0x0000FF в RGB)
     lbl_icon_sound = lv_label_create(icon_cont_center);
     lv_obj_set_style_text_font(lbl_icon_sound, &font_cyrillic_16, 0);
-    lv_obj_set_style_text_color(lbl_icon_sound, lv_color_hex(0xFFA500), 0);
+    lv_obj_set_style_text_color(lbl_icon_sound, lv_color_hex(0x0000FF), 0);
     lv_label_set_text(lbl_icon_sound, SYM_SOUND);
 
-    // Иконка музыки/нота - фиолетовый цвет (0xAA00FF)
+    // Иконка музыки/нота - ФИОЛЕТОВЫЙ (0xAA00FF в RGB)
     lbl_icon_music = lv_label_create(icon_cont_center);
     lv_obj_set_style_text_font(lbl_icon_music, &font_cyrillic_16, 0);
     lv_obj_set_style_text_color(lbl_icon_music, lv_color_hex(0xAA00FF), 0);
     lv_label_set_text(lbl_icon_music, SYM_MUSIC);
 
-    // Иконка вибро - серый цвет (0x888888)
+    // Иконка вибро - СЕРЫЙ (0x888888 в RGB, без изменений)
     lbl_icon_vibro = lv_label_create(icon_cont_center);
     lv_obj_set_style_text_font(lbl_icon_vibro, &font_cyrillic_16, 0);
     lv_obj_set_style_text_color(lbl_icon_vibro, lv_color_hex(0x888888), 0);
     lv_label_set_text(lbl_icon_vibro, SYM_VIBRO);
 
-    // Иконка подсветки/солнце - желтый цвет (0xFFDD00)
+    // Иконка подсветки/солнце - СИНИЙ (0x0000FF в RGB)
     lbl_icon_brightness = lv_label_create(icon_cont_center);
     lv_obj_set_style_text_font(lbl_icon_brightness, &font_cyrillic_16, 0);
-    lv_obj_set_style_text_color(lbl_icon_brightness, lv_color_hex(0xFFDD00), 0);
+    lv_obj_set_style_text_color(lbl_icon_brightness, lv_color_hex(0x0000FF), 0);
     lv_label_set_text(lbl_icon_brightness, SYM_BRIGHTNESS);
 
     // --- Нижний ряд: иконки жестов (для справки) ---
